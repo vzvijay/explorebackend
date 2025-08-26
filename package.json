@@ -9,8 +9,7 @@
     "test": "jest",
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js",
-    "build": "echo 'No build step required for Node.js backend'",
-    "postinstall": "npm run migrate"
+    "build": "echo 'No build step required for Node.js backend'"
   },
   "keywords": [
     "municipal",
