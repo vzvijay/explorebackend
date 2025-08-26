@@ -1,19 +1,25 @@
 services:
   - type: web
-    name: maharashtra-survey-backend
-    env: node
+    name: explorebackend
+    env: docker
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    region: singapore
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: explorebackend-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 24h
+      - key: CORS_ORIGIN
+        value: https://surveyapplication-gnqf21zjg-vijay-vs-projects-ebeee0fa.vercel.app
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX_REQUESTS
@@ -24,8 +30,6 @@ services:
         value: ./uploads
       - key: BCRYPT_ROUNDS
         value: 12
-    healthCheckPath: /health
-    autoDeploy: true
 
 databases:
   - name: maharashtra-survey-db

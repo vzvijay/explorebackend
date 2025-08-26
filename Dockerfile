@@ -28,10 +28,10 @@ RUN adduser -S surveyor -u 1001
 RUN chown -R surveyor:nodejs /app
 USER surveyor
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Health check - more lenient for free tier
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=5 \
   CMD node -e "const http = require('http'); \
-    const options = { hostname: 'localhost', port: 3000, path: '/health', timeout: 2000 }; \
+    const options = { hostname: 'localhost', port: 3000, path: '/health', timeout: 5000 }; \
     const req = http.request(options, (res) => { \
       process.exit(res.statusCode === 200 ? 0 : 1); \
     }); \
