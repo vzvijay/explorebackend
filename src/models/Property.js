@@ -69,6 +69,16 @@ const Property = sequelize.define('Property', {
     allowNull: false
   },
   
+  // Zone Information
+  zone: {
+    type: DataTypes.CHAR(1),
+    allowNull: false,
+    defaultValue: 'A',
+    validate: {
+      is: /^[A-Z]$/  // Only A-Z allowed
+    }
+  },
+  
   // Property Details
   property_type: {
     type: DataTypes.ENUM('residential', 'commercial', 'industrial', 'mixed', 'institutional'),
@@ -228,6 +238,32 @@ const Property = sequelize.define('Property', {
   survey_date: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  
+  // Edit Tracking for Always Editable System
+  last_edit_comment: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Comment required for post-submission edits'
+  },
+  last_edit_date: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Date of last edit'
+  },
+  last_edit_by: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    comment: 'User who made the last edit'
+  },
+  edit_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Number of times this property has been edited'
   }
 }, {
   tableName: 'properties',
