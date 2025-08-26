@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: maharashtra_survey_db
+      POSTGRES_USER: survey_user
+      POSTGRES_PASSWORD: your_secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - survey_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=maharashtra_survey_db
+      - DB_USER=survey_user
+      - DB_PASSWORD=your_secure_password
+      - JWT_SECRET=your_very_secure_jwt_secret_key_here
+      - JWT_EXPIRES_IN=7d
+    volumes:
+      - ./backend/src/uploads:/app/src/uploads
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    networks:
+      - survey_network
+
+  frontend:
+    build:
+      context: ./web-dashboard
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_URL=http://localhost:3000/api
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    networks:
+      - survey_network
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./deployment/nginx.conf:/etc/nginx/nginx.conf
+      - ./deployment/ssl:/etc/nginx/ssl
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - survey_network
+
+volumes:
+  postgres_data:
+
+networks:
+  survey_network:
+    driver: bridge 
