@@ -12,6 +12,7 @@ import DashboardPage from './pages/DashboardPage';
 import PropertiesPage from './pages/PropertiesPage';
 import PropertyDetailPage from './pages/PropertyDetailPage';
 import PropertySurveyForm from './pages/PropertySurveyForm';
+import EditPropertyPage from './pages/EditPropertyPage';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 
 const theme = createTheme({
@@ -64,6 +65,7 @@ const AppRoutes: React.FC = () => {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="properties" element={<PropertiesPage />} />
         <Route path="properties/:id" element={<PropertyDetailPage />} />
+        <Route path="properties/:id/edit" element={<EditPropertyPage />} />
         <Route path="survey" element={<PropertySurveyForm />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
