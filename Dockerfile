@@ -13,8 +13,9 @@ RUN npm ci --only=production
 # Copy source code
 COPY src/ ./src/
 
-# Copy production environment file
+# Copy environment file (production or local)
 COPY env.production .env
+# For local testing, you can override with: COPY env.local .env
 
 # Create uploads directory
 RUN mkdir -p src/uploads
