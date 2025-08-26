@@ -7,15 +7,21 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
-// Import models to initialize associations
-require('./models');
+// Import database
+const sequelize = require('./database/config');
+
+// Import models to initialize associations (only if database is available)
+let modelsInitialized = false;
+try {
+  require('./models');
+  modelsInitialized = true;
+} catch (error) {
+  console.log('⚠️ Models not initialized - database connection failed');
+}
 
 // Import routes
 const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
-
-// Import database
-const sequelize = require('./database/config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,7 +69,8 @@ app.get('/health', (req, res) => {
     success: true,
     message: 'Maharashtra Survey Management API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    database: modelsInitialized ? 'connected' : 'disconnected'
   });
 });
 
