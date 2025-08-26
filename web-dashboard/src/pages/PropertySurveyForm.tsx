@@ -68,6 +68,7 @@ interface FormData {
   locality: string;
   ward_number: string;
   pincode: string;
+  zone: string;
   property_type: string;
   construction_type: string;
   construction_year: string | null;
@@ -89,12 +90,25 @@ interface FormData {
   latitude: string;
   longitude: string;
   remarks: string;
+  edit_comment?: string; // Comment required for post-submission edits
 }
 
-const PropertySurveyForm: React.FC = () => {
+interface PropertySurveyFormProps {
+  editMode?: boolean;
+  propertyToEdit?: any;
+  onEditComplete?: () => void;
+}
+
+const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({ 
+  editMode = false, 
+  propertyToEdit = null, 
+  onEditComplete 
+}) => {
   const { user } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [isEditMode] = useState(editMode);
+  const [editingProperty] = useState(propertyToEdit);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -115,6 +129,7 @@ const PropertySurveyForm: React.FC = () => {
     locality: '',
     ward_number: '',
     pincode: '',
+    zone: 'A',
     property_type: '',
     construction_type: '',
     construction_year: '',
@@ -135,7 +150,8 @@ const PropertySurveyForm: React.FC = () => {
     rain_water_harvesting: false,
     latitude: '',
     longitude: '',
-    remarks: ''
+    remarks: '',
+    edit_comment: ''
   });
 
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
@@ -147,6 +163,73 @@ const PropertySurveyForm: React.FC = () => {
     bathrooms: []
   });
   const [signatureData, setSignatureData] = useState<string>('');
+
+  // Load existing property data when in edit mode
+  React.useEffect(() => {
+    if (isEditMode && editingProperty) {
+      setFormData({
+        survey_number: editingProperty.survey_number || '',
+        old_mc_property_number: editingProperty.old_mc_property_number || '',
+        register_no: editingProperty.register_no || '',
+        owner_name: editingProperty.owner_name || '',
+        owner_father_name: editingProperty.owner_father_name || '',
+        owner_phone: editingProperty.owner_phone || '',
+        owner_email: editingProperty.owner_email || '',
+        aadhar_number: editingProperty.aadhar_number || '',
+        house_number: editingProperty.house_number || '',
+        street_name: editingProperty.street_name || '',
+        locality: editingProperty.locality || '',
+        ward_number: editingProperty.ward_number?.toString() || '',
+        pincode: editingProperty.pincode || '',
+        zone: editingProperty.zone || 'A',
+        property_type: editingProperty.property_type || '',
+        construction_type: editingProperty.construction_type || '',
+        construction_year: editingProperty.construction_year?.toString() || '',
+        number_of_floors: editingProperty.number_of_floors || 1,
+        building_permission: editingProperty.building_permission || false,
+        bp_number: editingProperty.bp_number || '',
+        bp_date: formatDateForInput(editingProperty.bp_date),
+        plot_area: editingProperty.plot_area?.toString() || '',
+        built_up_area: editingProperty.built_up_area?.toString() || '',
+        carpet_area: editingProperty.carpet_area?.toString() || '',
+        water_connection: editingProperty.water_connection || 0,
+        water_connection_number: editingProperty.water_connection_number || '',
+        water_connection_date: formatDateForInput(editingProperty.water_connection_date),
+        electricity_connection: editingProperty.electricity_connection || false,
+        electricity_connection_number: editingProperty.electricity_connection_number || '',
+        sewage_connection: editingProperty.sewage_connection || false,
+        solar_panel: editingProperty.solar_panel || false,
+        rain_water_harvesting: editingProperty.rain_water_harvesting || false,
+        latitude: editingProperty.latitude?.toString() || '',
+        longitude: editingProperty.longitude?.toString() || '',
+        remarks: editingProperty.remarks || '',
+        edit_comment: ''
+      });
+
+      // Load property use details if available
+      if (editingProperty.property_use_details) {
+        setPropertyUse(editingProperty.property_use_details);
+      }
+
+      // Load signature if available
+      if (editingProperty.signature_data) {
+        setSignatureData(editingProperty.signature_data);
+      }
+
+      // Load photo if available
+      if (editingProperty.owner_tenant_photo) {
+        setCapturedPhoto(editingProperty.owner_tenant_photo);
+      }
+
+      // Load location if available
+      if (editingProperty.latitude && editingProperty.longitude) {
+        setLocation({
+          lat: parseFloat(editingProperty.latitude),
+          lng: parseFloat(editingProperty.longitude)
+        });
+      }
+    }
+  }, [isEditMode, editingProperty]);
 
   const steps = [
     'Basic Information',
@@ -167,6 +250,17 @@ const PropertySurveyForm: React.FC = () => {
     if (digits.length <= 4) return digits;
     if (digits.length <= 8) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
     return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 12)}`;
+  };
+
+  const formatDateForInput = (dateValue: string | Date | null): string => {
+    if (!dateValue) return '';
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return '';
+      return date.toISOString().split('T')[0];
+    } catch (error) {
+      return '';
+    }
   };
 
   const getCurrentLocation = () => {
@@ -323,7 +417,7 @@ const PropertySurveyForm: React.FC = () => {
   const handleNext = () => {
     // Validation for specific steps
     if (activeStep === 0) {
-      if (!formData.owner_name || !formData.locality || !formData.ward_number || !formData.pincode) {
+      if (!formData.owner_name || !formData.locality || !formData.ward_number || !formData.pincode || !formData.zone) {
         toast.error('Please fill all required fields in Basic Information');
         return;
       }
@@ -383,10 +477,19 @@ const PropertySurveyForm: React.FC = () => {
       // Final validation
       if (!formData.owner_name || !formData.locality || !formData.property_type || 
           !formData.plot_area || !formData.built_up_area || !formData.carpet_area ||
-          !formData.ward_number || !formData.pincode) {
+          !formData.ward_number || !formData.pincode || !formData.zone) {
         toast.error('Please fill all required fields marked with *');
         setLoading(false);
         return;
+      }
+
+      // Validate edit comment for post-submission edits (if this is an edit)
+      if (formData.edit_comment === undefined && formData.survey_number !== `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`) {
+        if (!formData.edit_comment || formData.edit_comment.trim() === '') {
+          toast.error('Edit comment is required for post-submission edits');
+          setLoading(false);
+          return;
+        }
       }
 
       const apiData = {
@@ -406,13 +509,27 @@ const PropertySurveyForm: React.FC = () => {
         construction_type: formData.construction_type as any
       };
 
-      const response = await propertiesApi.createProperty(apiData);
+      let response;
       
-      if (response.data && response.data.property && response.data.property.id) {
-        await propertiesApi.submitProperty(response.data.property.id);
-        toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
+      if (isEditMode && editingProperty) {
+        // Update existing property
+        response = await propertiesApi.updateProperty(editingProperty.id, apiData);
+        toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
-        // Reset form
+        // Call callback if provided
+        if (onEditComplete) {
+          onEditComplete();
+        }
+      } else {
+        // Create new property
+        response = await propertiesApi.createProperty(apiData);
+        
+        if (response.data && response.data.property && response.data.property.id) {
+          await propertiesApi.submitProperty(response.data.property.id);
+          toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
+        }
+        
+        // Reset form only for new surveys
         setFormData({
           survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
           old_mc_property_number: '',
@@ -427,6 +544,7 @@ const PropertySurveyForm: React.FC = () => {
           locality: '',
           ward_number: '',
           pincode: '',
+          zone: 'A',
           property_type: '',
           construction_type: '',
           construction_year: '',
@@ -447,7 +565,8 @@ const PropertySurveyForm: React.FC = () => {
           rain_water_harvesting: false,
           latitude: '',
           longitude: '',
-          remarks: ''
+          remarks: '',
+          edit_comment: ''
         });
         setPropertyUse({
           halls: [],
@@ -712,7 +831,7 @@ const PropertySurveyForm: React.FC = () => {
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Locality *"
@@ -723,7 +842,7 @@ const PropertySurveyForm: React.FC = () => {
               />
             </Grid>
             
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={2}>
               <TextField
                 fullWidth
                 label="Ward Number *"
@@ -746,6 +865,43 @@ const PropertySurveyForm: React.FC = () => {
                 required
                 inputProps={{ maxLength: 6 }}
               />
+            </Grid>
+            
+            <Grid item xs={12} sm={3}>
+              <FormControl fullWidth required>
+                <InputLabel>Zone *</InputLabel>
+                <Select
+                  value={formData.zone}
+                  onChange={(e) => handleInputChange('zone', e.target.value)}
+                >
+                  <MenuItem value="A">Zone A</MenuItem>
+                  <MenuItem value="B">Zone B</MenuItem>
+                  <MenuItem value="C">Zone C</MenuItem>
+                  <MenuItem value="D">Zone D</MenuItem>
+                  <MenuItem value="E">Zone E</MenuItem>
+                  <MenuItem value="F">Zone F</MenuItem>
+                  <MenuItem value="G">Zone G</MenuItem>
+                  <MenuItem value="H">Zone H</MenuItem>
+                  <MenuItem value="I">Zone I</MenuItem>
+                  <MenuItem value="J">Zone J</MenuItem>
+                  <MenuItem value="K">Zone K</MenuItem>
+                  <MenuItem value="L">Zone L</MenuItem>
+                  <MenuItem value="M">Zone M</MenuItem>
+                  <MenuItem value="N">Zone N</MenuItem>
+                  <MenuItem value="O">Zone O</MenuItem>
+                  <MenuItem value="P">Zone P</MenuItem>
+                  <MenuItem value="Q">Zone Q</MenuItem>
+                  <MenuItem value="R">Zone R</MenuItem>
+                  <MenuItem value="S">Zone S</MenuItem>
+                  <MenuItem value="T">Zone T</MenuItem>
+                  <MenuItem value="U">Zone U</MenuItem>
+                  <MenuItem value="V">Zone V</MenuItem>
+                  <MenuItem value="W">Zone W</MenuItem>
+                  <MenuItem value="X">Zone X</MenuItem>
+                  <MenuItem value="Y">Zone Y</MenuItem>
+                  <MenuItem value="Z">Zone Z</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
         );
@@ -854,6 +1010,7 @@ const PropertySurveyForm: React.FC = () => {
                     value={formData.bp_date}
                     onChange={(e) => handleInputChange('bp_date', e.target.value)}
                     InputLabelProps={{ shrink: true }}
+                    helperText={isEditMode && editingProperty?.bp_date ? "Previously set date - you can update this" : ""}
                   />
                 </Grid>
               </>
@@ -970,6 +1127,7 @@ const PropertySurveyForm: React.FC = () => {
                             value={formData.water_connection_date}
                             onChange={(e) => handleInputChange('water_connection_date', e.target.value)}
                             InputLabelProps={{ shrink: true }}
+                            helperText={isEditMode && editingProperty?.water_connection_date ? "Previously set date - you can update this" : ""}
                           />
                         </Grid>
                       </>
@@ -1221,6 +1379,9 @@ const PropertySurveyForm: React.FC = () => {
                       <Typography><strong>Ward:</strong> {formData.ward_number}</Typography>
                     </Grid>
                     <Grid item xs={6}>
+                      <Typography><strong>Zone:</strong> {formData.zone}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
                       <Typography><strong>Plot Area:</strong> {formData.plot_area} sq ft</Typography>
                     </Grid>
                     <Grid item xs={6}>
@@ -1235,6 +1396,16 @@ const PropertySurveyForm: React.FC = () => {
                     <Grid item xs={6}>
                       <Typography><strong>Water Connection:</strong> {formData.water_connection > 0 ? `${formData.water_connection} connection(s)` : 'None'}</Typography>
                     </Grid>
+                    {formData.bp_date && (
+                      <Grid item xs={6}>
+                        <Typography><strong>BP Date:</strong> {new Date(formData.bp_date).toLocaleDateString()}</Typography>
+                      </Grid>
+                    )}
+                    {formData.water_connection_date && (
+                      <Grid item xs={6}>
+                        <Typography><strong>Water Connection Date:</strong> {new Date(formData.water_connection_date).toLocaleDateString()}</Typography>
+                      </Grid>
+                    )}
                     <Grid item xs={6}>
                       <Typography><strong>Utilities:</strong> 
                         {[
@@ -1253,6 +1424,45 @@ const PropertySurveyForm: React.FC = () => {
                     <Grid item xs={12}>
                       <Typography><strong>Field Executive:</strong> {user?.first_name} {user?.last_name}</Typography>
                     </Grid>
+                    
+                    {/* Edit Tracking Information (Only shown in edit mode) */}
+                    {isEditMode && editingProperty && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'primary.main' }}>
+                          📝 Edit History
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <Typography><strong>Total Edits:</strong> {editingProperty.edit_count || 0}</Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography><strong>Last Edit Date:</strong> {
+                              editingProperty.last_edit_date 
+                                ? new Date(editingProperty.last_edit_date).toLocaleDateString() 
+                                : 'No previous edits'
+                            }</Typography>
+                          </Grid>
+                          {editingProperty.last_edit_comment && (
+                            <Grid item xs={12}>
+                              <Typography><strong>Last Edit Comment:</strong></Typography>
+                              <Typography variant="body2" sx={{ ml: 2, fontStyle: 'italic', color: 'text.secondary' }}>
+                                "{editingProperty.last_edit_comment}"
+                              </Typography>
+                            </Grid>
+                          )}
+                          {editingProperty.last_edit_by && (
+                            <Grid item xs={6}>
+                              <Typography><strong>Last Edited By:</strong> {
+                                editingProperty.last_edit_by === user?.id 
+                                  ? 'You' 
+                                  : 'Another user'
+                              }</Typography>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Grid>
+                    )}
+                    
                     <Grid item xs={12}>
                       <Typography><strong>Completeness:</strong></Typography>
                       <Box sx={{ ml: 2 }}>
@@ -1264,6 +1474,21 @@ const PropertySurveyForm: React.FC = () => {
                         <Typography>{capturedPhoto ? '✅' : '⚠️'} Owner Photo {!capturedPhoto && '(Optional)'}</Typography>
                         <Typography>{signatureData ? '✅' : '⚠️'} Digital Signature {!signatureData && '(Optional)'}</Typography>
                       </Box>
+                    </Grid>
+                    
+                    {/* Edit Comment Field for Post-Submission Edits */}
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={3}
+                        label="Edit Comment (Required for post-submission edits)"
+                        value={formData.edit_comment}
+                        onChange={(e) => setFormData(prev => ({ ...prev, edit_comment: e.target.value }))}
+                        placeholder="Please provide a reason for this edit..."
+                        helperText="This comment is mandatory when editing submitted, approved, or rejected surveys"
+                        required
+                      />
                     </Grid>
                   </Grid>
                 </CardContent>
@@ -1280,13 +1505,30 @@ const PropertySurveyForm: React.FC = () => {
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        🏛️ Comprehensive Property Survey Form
+        {isEditMode ? '✏️ Edit Property Survey' : '🏛️ Comprehensive Property Survey Form'}
       </Typography>
       
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Complete digital survey form with all required fields for Maharashtra Municipal Corporation.
-        Fields marked with * are mandatory.
+        {isEditMode 
+          ? `Editing survey: ${editingProperty?.survey_number}. All fields marked with * are mandatory.`
+          : 'Complete digital survey form with all required fields for Maharashtra Municipal Corporation. Fields marked with * are mandatory.'
+        }
       </Typography>
+      
+      {/* Edit Mode Alert */}
+      {isEditMode && editingProperty && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            <strong>Edit Mode:</strong> You are editing an existing property survey. 
+            {editingProperty.edit_count > 0 && (
+              <> This property has been edited {editingProperty.edit_count} time(s) before.</>
+            )}
+            {editingProperty.survey_status !== 'draft' && (
+              <> <strong>Note:</strong> Edit comment is required for post-submission edits.</>
+            )}
+          </Typography>
+        </Alert>
+      )}
 
       <Stepper activeStep={activeStep} orientation="vertical">
         {steps.map((label, index) => (
@@ -1323,7 +1565,7 @@ const PropertySurveyForm: React.FC = () => {
                     color="success"
                     size="large"
                   >
-                    {loading ? <CircularProgress size={20} /> : 'Submit for Review'}
+                    {loading ? <CircularProgress size={20} /> : (isEditMode ? 'Update Survey' : 'Submit for Review')}
                   </Button>
                 ) : (
                   <Button

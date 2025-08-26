@@ -23,7 +23,8 @@ import {
   Assignment,
   CheckCircle,
   Schedule,
-  Cancel
+  Cancel,
+  Edit
 } from '@mui/icons-material';
 import { propertiesApi } from '../services/api';
 import { Property } from '../types';
@@ -113,6 +114,11 @@ const DashboardPage: React.FC = () => {
   const totalTaxRevenue = properties
     .filter(p => p.survey_status === 'approved')
     .reduce((sum, p) => sum + parseFloat(calculateTax(p.carpet_area, p.property_type)), 0);
+
+  const handleEditProperty = (property: Property) => {
+    // Navigate to edit form
+    window.location.href = `/properties/${property.id}/edit`;
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -309,6 +315,7 @@ const DashboardPage: React.FC = () => {
                     <TableCell>Est. Tax</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Ward</TableCell>
+                    <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -333,6 +340,22 @@ const DashboardPage: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>{property.ward_number}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {/* Edit Button for Field Executives (Always Editable System) */}
+                          {user?.role === 'field_executive' && property.surveyed_by === user.id && (
+                            <Button
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                              startIcon={<Edit />}
+                              onClick={() => handleEditProperty(property)}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </Box>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

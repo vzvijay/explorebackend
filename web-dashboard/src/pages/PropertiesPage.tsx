@@ -33,7 +33,8 @@ import {
   Cancel,
   LocationOn,
   Home,
-  Person
+  Person,
+  Edit
 } from '@mui/icons-material';
 import { propertiesApi } from '../services/api';
 import { Property } from '../types';
@@ -54,10 +55,12 @@ const PropertiesPage: React.FC = () => {
     survey_status: string;
     property_type: string;
     ward_number: string;
+    zone: string;
   }>({
     survey_status: '',
     property_type: '',
-    ward_number: ''
+    ward_number: '',
+    zone: ''
   });
 
   useEffect(() => {
@@ -73,7 +76,8 @@ const PropertiesPage: React.FC = () => {
         limit: 10,
         survey_status: filters.survey_status || undefined,
         property_type: filters.property_type || undefined,
-        ward_number: filters.ward_number ? parseInt(filters.ward_number) : undefined
+        ward_number: filters.ward_number ? parseInt(filters.ward_number) : undefined,
+        zone: filters.zone || undefined
       };
       
       const response = await propertiesApi.getProperties(apiFilters);
@@ -119,6 +123,11 @@ const PropertiesPage: React.FC = () => {
     setSelectedProperty(property);
     setReviewAction(action);
     setReviewDialogOpen(true);
+  };
+
+  const handleEditProperty = (property: Property) => {
+    // Navigate to edit form
+    window.location.href = `/properties/${property.id}/edit`;
   };
 
   const submitReview = async () => {
@@ -167,7 +176,7 @@ const PropertiesPage: React.FC = () => {
             Filters
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Survey Status</InputLabel>
                 <Select
@@ -183,7 +192,7 @@ const PropertiesPage: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Property Type</InputLabel>
                 <Select
@@ -199,7 +208,7 @@ const PropertiesPage: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 fullWidth
                 label="Ward Number"
@@ -209,6 +218,58 @@ const PropertiesPage: React.FC = () => {
                 placeholder="Filter by ward"
               />
             </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth>
+                <InputLabel>Zone</InputLabel>
+                <Select
+                  value={filters.zone}
+                  onChange={(e) => setFilters(prev => ({ ...prev, zone: e.target.value }))}
+                >
+                  <MenuItem value="">All Zones</MenuItem>
+                  <MenuItem value="A">Zone A</MenuItem>
+                  <MenuItem value="B">Zone B</MenuItem>
+                  <MenuItem value="C">Zone C</MenuItem>
+                  <MenuItem value="D">Zone D</MenuItem>
+                  <MenuItem value="E">Zone E</MenuItem>
+                  <MenuItem value="F">Zone F</MenuItem>
+                  <MenuItem value="G">Zone G</MenuItem>
+                  <MenuItem value="H">Zone H</MenuItem>
+                  <MenuItem value="I">Zone I</MenuItem>
+                  <MenuItem value="J">Zone J</MenuItem>
+                  <MenuItem value="K">Zone K</MenuItem>
+                  <MenuItem value="L">Zone L</MenuItem>
+                  <MenuItem value="M">Zone M</MenuItem>
+                  <MenuItem value="N">Zone N</MenuItem>
+                  <MenuItem value="O">Zone O</MenuItem>
+                  <MenuItem value="P">Zone P</MenuItem>
+                  <MenuItem value="Q">Zone Q</MenuItem>
+                  <MenuItem value="R">Zone R</MenuItem>
+                  <MenuItem value="S">Zone S</MenuItem>
+                  <MenuItem value="T">Zone T</MenuItem>
+                  <MenuItem value="U">Zone U</MenuItem>
+                  <MenuItem value="V">Zone V</MenuItem>
+                  <MenuItem value="W">Zone W</MenuItem>
+                  <MenuItem value="X">Zone X</MenuItem>
+                  <MenuItem value="Y">Zone Y</MenuItem>
+                  <MenuItem value="Z">Zone Z</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="outlined"
+                onClick={() => setFilters({
+                  survey_status: '',
+                  property_type: '',
+                  ward_number: '',
+                  zone: ''
+                })}
+              >
+                Clear All Filters
+              </Button>
+            </Box>
           </Grid>
         </CardContent>
       </Card>
@@ -283,9 +344,11 @@ const PropertiesPage: React.FC = () => {
                   <TableCell>Property Owner</TableCell>
                   <TableCell>Address</TableCell>
                   <TableCell>Property Type</TableCell>
+                  <TableCell>Zone</TableCell>
                   <TableCell>Carpet Area (sq ft)</TableCell>
                   <TableCell>Estimated Tax (₹)</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Edit Info</TableCell>
                   <TableCell>Field Executive</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -319,6 +382,14 @@ const PropertiesPage: React.FC = () => {
                         variant="outlined" 
                       />
                     </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={property.zone} 
+                        size="small" 
+                        variant="outlined" 
+                        color="primary"
+                      />
+                    </TableCell>
                     <TableCell>{property.carpet_area}</TableCell>
                     <TableCell>
                       ₹{calculateTax(property.carpet_area, property.property_type)}
@@ -329,6 +400,22 @@ const PropertiesPage: React.FC = () => {
                         color={getStatusColor(property.survey_status) as any}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>
+                      {property.edit_count > 0 ? (
+                        <Box>
+                          <Typography variant="caption" display="block">
+                            Edited {property.edit_count} time(s)
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Last: {property.last_edit_date ? new Date(property.last_edit_date).toLocaleDateString() : 'N/A'}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          No edits
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption">
@@ -344,6 +431,18 @@ const PropertiesPage: React.FC = () => {
                         >
                           View
                         </Button>
+                        
+                        {/* Edit Button for Field Executives (Always Editable System) */}
+                        {user?.role === 'field_executive' && property.surveyed_by === user.id && (
+                          <Button
+                            size="small"
+                            color="primary"
+                            startIcon={<Edit />}
+                            onClick={() => handleEditProperty(property)}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         
                         {user?.role === 'municipal_officer' && property.survey_status === 'submitted' && (
                           <>
