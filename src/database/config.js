@@ -3,8 +3,14 @@ require('dotenv').config();
 
 let sequelize;
 
-// Check if Railway DATABASE_URL is available (production)
-if (process.env.DATABASE_URL) {
+// Debug: Log environment variables (remove in production)
+console.log('🔍 Environment check:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('DB_HOST:', process.env.DB_HOST);
+
+// Check if DATABASE_URL is available (production)
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -26,6 +32,7 @@ if (process.env.DATABASE_URL) {
     }
   });
 } else {
+  console.log('⚠️ DATABASE_URL not found, using fallback configuration');
   // Fallback to individual environment variables (development/local)
   sequelize = new Sequelize({
     host: process.env.DB_HOST || 'localhost',

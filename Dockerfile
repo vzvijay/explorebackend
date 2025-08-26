@@ -13,6 +13,9 @@ RUN npm ci --only=production
 # Copy source code
 COPY src/ ./src/
 
+# Copy production environment file
+COPY env.production .env
+
 # Create uploads directory
 RUN mkdir -p src/uploads
 

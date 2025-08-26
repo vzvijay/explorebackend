@@ -1,5 +1,5 @@
 {
-  "name": "maharashtra-survey-backend",
+  "name": "explore-backend",
   "version": "1.0.0",
   "description": "Backend API for Maharashtra Municipal Corporation Survey Management System",
   "main": "src/server.js",
