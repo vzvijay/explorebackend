@@ -91,6 +91,7 @@ interface FormData {
   longitude: string;
   remarks: string;
   edit_comment?: string; // Comment required for post-submission edits
+  sketch_photo?: string; // Hand-drawn sketch photo path
 }
 
 interface PropertySurveyFormProps {
@@ -114,6 +115,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null);
+  const [sketchPhotoFile, setSketchPhotoFile] = useState<File | null>(null);
   
   const [formData, setFormData] = useState<FormData>({
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -203,7 +206,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         latitude: editingProperty.latitude?.toString() || '',
         longitude: editingProperty.longitude?.toString() || '',
         remarks: editingProperty.remarks || '',
-        edit_comment: ''
+        edit_comment: '',
+        sketch_photo: editingProperty.sketch_photo || ''
       });
 
       // Load property use details if available
@@ -237,6 +241,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     'Area Measurements & Property Use',
     'Utilities & Connections', 
     'Location, Photos & Signature',
+    'Sketch Photo Capture',
     'Review & Submit'
   ];
 
@@ -434,6 +439,28 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       }
     }
     
+    if (activeStep === 4) {
+      if (!formData.latitude || !formData.longitude) {
+        toast.error('Please capture GPS location before proceeding');
+        return;
+      }
+      if (!capturedPhoto) {
+        toast.error('Please capture owner/tenant photo before proceeding');
+        return;
+      }
+      if (!signatureData) {
+        toast.error('Please add digital signature before proceeding');
+        return;
+      }
+    }
+    
+    if (activeStep === 5) {
+      if (!sketchPhoto) {
+        toast.error('Please capture a sketch photo before proceeding');
+        return;
+      }
+    }
+    
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
@@ -577,6 +604,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         });
         setSignatureData('');
         setCapturedPhoto(null);
+        setSketchPhoto(null);
+        setSketchPhotoFile(null);
+        setFormData(prev => ({ ...prev, sketch_photo: '' }));
         setActiveStep(0);
       }
     } catch (error: any) {
@@ -1338,7 +1368,130 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           </Grid>
         );
 
-      case 5: // Review & Submit
+      case 5: // Sketch Photo Capture
+        return (
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                🎨 Sketch Photo Capture
+              </Typography>
+              
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Draw your hand-drawn sketch on paper, then capture it with your device camera. This sketch will be part of your survey documentation.
+              </Alert>
+            </Grid>
+            
+            {/* Sketch Photo Capture */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  📸 Hand-Drawn Sketch Photo
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ textAlign: 'center', p: 3, border: '2px dashed #ccc', borderRadius: 2 }}>
+                      <Typography variant="body1" gutterBottom>
+                        📝 Instructions:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        1. Draw your property sketch on paper
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        2. Include property boundaries, measurements
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        3. Take a clear photo of your sketch
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        4. Upload the photo below
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      {sketchPhoto ? (
+                        <Box>
+                          <img 
+                            src={sketchPhoto} 
+                            alt="Sketch Photo" 
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '300px', 
+                              border: '2px solid #4caf50',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
+                            ✅ Sketch photo captured successfully
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            color="secondary"
+                            onClick={() => {
+                              setSketchPhoto(null);
+                              setSketchPhotoFile(null);
+                            }}
+                            sx={{ mt: 1 }}
+                          >
+                            Remove Photo
+                          </Button>
+                        </Box>
+                      ) : (
+                        <Box>
+                          <input
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            id="sketch-photo-input"
+                            type="file"
+                            capture="environment"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setSketchPhotoFile(file);
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                  setSketchPhoto(e.target?.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                          <label htmlFor="sketch-photo-input">
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              component="span"
+                              startIcon={<PhotoCamera />}
+                              sx={{ p: 3, fontSize: '1.1rem' }}
+                              fullWidth
+                            >
+                              📸 Capture Sketch Photo
+                            </Button>
+                          </label>
+                          <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                            Tap to open camera or select from gallery
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+                
+                {sketchPhoto && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>Sketch Photo Ready!</strong> Your hand-drawn sketch has been captured and will be included in the survey.
+                    </Typography>
+                  </Alert>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        );
+
+      case 6: // Review & Submit
         return (
           <Grid container spacing={3}>
             <Grid item xs={12}>
@@ -1473,8 +1626,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                         <Typography>{formData.latitude ? '✅' : '⚠️'} GPS Location {!formData.latitude && '(Optional)'}</Typography>
                         <Typography>{capturedPhoto ? '✅' : '⚠️'} Owner Photo {!capturedPhoto && '(Optional)'}</Typography>
                         <Typography>{signatureData ? '✅' : '⚠️'} Digital Signature {!signatureData && '(Optional)'}</Typography>
+                        <Typography>{sketchPhoto ? '✅' : '⚠️'} Sketch Photo {!sketchPhoto && '(Required)'}</Typography>
                       </Box>
                     </Grid>
+                    
+                    {/* Sketch Photo Information */}
+                    {sketchPhoto && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'primary.main' }}>
+                          🎨 Sketch Photo Captured
+                        </Typography>
+                        <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <img 
+                            src={sketchPhoto} 
+                            alt="Sketch Photo" 
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '200px', 
+                              border: '1px solid #4caf50',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Typography variant="body2" sx={{ mt: 1, color: 'success.main' }}>
+                            ✅ Hand-drawn sketch photo ready for submission
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )}
                     
                     {/* Edit Comment Field for Post-Submission Edits */}
                     <Grid item xs={12}>
