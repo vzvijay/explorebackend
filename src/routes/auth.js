@@ -68,69 +68,123 @@ router.get('/test-route', (req, res) => {
   res.json({ message: 'Auth routes file is loaded correctly', timestamp: new Date().toISOString() });
 });
 
-// Temporary endpoint to create new admin user
+// Temporary endpoint to create new admin users
 router.post('/create-admin', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const { User } = require('../models');
     
-    // New admin user details
-    const newAdmin = {
-      employee_id: 'MH2024ADM004',
-      first_name: 'Gajanan',
-      last_name: 'Tayde',
-      email: 'gajanan@gmail.com',
-      phone: '+91-9876543210',
-      password: 'gajanan@123',
-      role: 'admin',
-      department: 'Survey Department',
-      assigned_area: 'All Areas',
-      is_active: true
-    };
+    // Admin users to create
+    const adminUsers = [
+      {
+        employee_id: 'MH2024ADM004',
+        first_name: 'Gajanan',
+        last_name: 'Tayde',
+        email: 'gajanan.tayde@gmail.com',
+        phone: '+91-9876543210',
+        password: 'gajanan@123',
+        role: 'admin',
+        department: 'Survey Department',
+        assigned_area: 'All Areas',
+        is_active: true
+      },
+      {
+        employee_id: 'MH2024ADM005',
+        first_name: 'Vilas',
+        last_name: 'Tavde',
+        email: 'vilas.tavde@gmail.com',
+        phone: '+91-9876543211',
+        password: 'vilas@123',
+        role: 'admin',
+        department: 'Survey Department',
+        assigned_area: 'All Areas',
+        is_active: true
+      }
+    ];
     
-    // Generate password hash
-    const saltRounds = 12;
-    const passwordHash = await bcrypt.hash(newAdmin.password, saltRounds);
+    const results = [];
+    const errors = [];
     
-    // Test the hash
-    const isValid = await bcrypt.compare(newAdmin.password, passwordHash);
-    
-    if (isValid) {
-      // Create new user
-      const user = await User.create({
-        employee_id: newAdmin.employee_id,
-        first_name: newAdmin.first_name,
-        last_name: newAdmin.last_name,
-        email: newAdmin.email,
-        phone: newAdmin.phone,
-        password: passwordHash,
-        role: newAdmin.role,
-        department: newAdmin.department,
-        assigned_area: newAdmin.assigned_area,
-        is_active: newAdmin.is_active
-      });
-      
-      res.json({
-        success: true,
-        message: 'New admin user created successfully',
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          employee_id: user.employee_id
-        },
-        loginCredentials: {
-          email: newAdmin.email,
-          password: newAdmin.password,
-          role: newAdmin.role
+    for (const adminUser of adminUsers) {
+      try {
+        // Check if user already exists
+        const existingUser = await User.findOne({ where: { email: adminUser.email } });
+        
+        if (existingUser) {
+          results.push({
+            email: adminUser.email,
+            status: 'skipped',
+            message: 'User already exists'
+          });
+          continue;
         }
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        message: 'Password hash generation failed'
-      });
+        
+        // Generate password hash
+        const saltRounds = 12;
+        const passwordHash = await bcrypt.hash(adminUser.password, saltRounds);
+        
+        // Test the hash
+        const isValid = await bcrypt.compare(adminUser.password, passwordHash);
+        
+        if (isValid) {
+          // Create new user
+          const user = await User.create({
+            employee_id: adminUser.employee_id,
+            first_name: adminUser.first_name,
+            last_name: adminUser.last_name,
+            email: adminUser.email,
+            phone: adminUser.phone,
+            password: passwordHash,
+            role: adminUser.role,
+            department: adminUser.department,
+            assigned_area: adminUser.assigned_area,
+            is_active: adminUser.is_active
+          });
+          
+          results.push({
+            email: adminUser.email,
+            status: 'created',
+            message: 'User created successfully',
+            user: {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              employee_id: user.employee_id
+            },
+            loginCredentials: {
+              email: adminUser.email,
+              password: adminUser.password,
+              role: adminUser.role
+            }
+          });
+        } else {
+          errors.push({
+            email: adminUser.email,
+            status: 'failed',
+            message: 'Password hash generation failed'
+          });
+        }
+      } catch (error) {
+        errors.push({
+          email: adminUser.email,
+          status: 'error',
+          message: error.message
+        });
+      }
     }
+    
+    res.json({
+      success: true,
+      message: 'Admin user creation completed',
+      results: results,
+      errors: errors,
+      summary: {
+        total: adminUsers.length,
+        created: results.filter(r => r.status === 'created').length,
+        skipped: results.filter(r => r.status === 'skipped').length,
+        failed: errors.length
+      }
+    });
     
   } catch (error) {
     console.error('User creation error:', error);
