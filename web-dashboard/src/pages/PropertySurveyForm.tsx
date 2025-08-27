@@ -89,6 +89,14 @@ interface FormData {
   rain_water_harvesting: boolean;
   latitude: string;
   longitude: string;
+  // New address fields from reverse geocoding
+  address: string;
+  street_address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  ward_number_from_gps: string;
+  area_from_gps: string;
   remarks: string;
   edit_comment?: string; // Comment required for post-submission edits
   sketch_photo?: string; // Hand-drawn sketch photo path
@@ -153,11 +161,23 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     rain_water_harvesting: false,
     latitude: '',
     longitude: '',
+    // New address fields
+    address: '',
+    street_address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    ward_number_from_gps: '',
+    area_from_gps: '',
     remarks: '',
     edit_comment: ''
   });
 
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
+  const [geocodingLoading, setGeocodingLoading] = useState(false);
   const [propertyUse, setPropertyUse] = useState<PropertyUseDetails>({
     halls: [],
     bedrooms: [],
@@ -205,6 +225,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         rain_water_harvesting: editingProperty.rain_water_harvesting || false,
         latitude: editingProperty.latitude?.toString() || '',
         longitude: editingProperty.longitude?.toString() || '',
+        // New address fields
+        address: editingProperty.address || '',
+        street_address: editingProperty.street_address || '',
+        city: editingProperty.city || '',
+        state: editingProperty.state || '',
+        postal_code: editingProperty.postal_code || '',
+        ward_number_from_gps: editingProperty.ward_number_from_gps || '',
+        area_from_gps: editingProperty.area_from_gps || '',
         remarks: editingProperty.remarks || '',
         edit_comment: '',
         sketch_photo: editingProperty.sketch_photo || ''
@@ -231,6 +259,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           lat: parseFloat(editingProperty.latitude),
           lng: parseFloat(editingProperty.longitude)
         });
+      }
+
+      // Load captured address if available
+      if (editingProperty.address) {
+        setCapturedAddress(editingProperty.address);
       }
     }
   }, [isEditMode, editingProperty]);
@@ -268,32 +301,265 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Test GPS functionality (debug function)
+  const testGPSFunctionality = () => {
+    console.log('🔍 Testing GPS functionality...');
+    
+    if (!navigator.geolocation) {
+      console.error('❌ Geolocation not supported');
+      toast.error('Geolocation not supported by this browser');
+      return;
+    }
+    
+    console.log('✅ Geolocation API available');
+    console.log('📍 Testing basic location request...');
+    
+    // Simple location test
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('✅ GPS Test Success:', position);
+        toast.success('GPS test successful!');
+      },
+      (error) => {
+        console.error('❌ GPS Test Failed:', error);
+        console.error('Error Code:', error.code);
+        console.error('Error Message:', error.message);
+        
+        let detailedMessage = 'GPS test failed';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            detailedMessage = 'Location permission denied. Please allow location access.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            detailedMessage = 'Location unavailable. Check device location services.';
+            break;
+          case error.TIMEOUT:
+            detailedMessage = 'Location request timed out.';
+            break;
+          default:
+            detailedMessage = `GPS error: ${error.message}`;
+        }
+        
+        toast.error(detailedMessage);
+      },
+      {
+        enableHighAccuracy: false,  // Start with low accuracy for testing
+        timeout: 10000,            // 10 second timeout for testing
+        maximumAge: 300000         // Accept cached location up to 5 minutes
+      }
+    );
+  };
+
+  // Demo mode for testing (bypasses GPS issues)
+  const enableDemoMode = () => {
+    console.log('🎯 Enabling demo mode for testing...');
+    
+    // Set demo coordinates (Pune, Maharashtra)
+    const demoLat = 18.5204;
+    const demoLng = 73.8567;
+    
+    // Update form data
+    setFormData(prev => ({
+      ...prev,
+      latitude: demoLat.toString(),
+      longitude: demoLng.toString()
+    }));
+    
+    // Set location state
+    setLocation({ lat: demoLat, lng: demoLng });
+    
+    // Simulate address lookup
+    setCapturedAddress('Pune, Maharashtra, India');
+    
+    toast.success('Demo mode enabled! Testing with Pune coordinates.');
+    console.log('✅ Demo mode enabled with coordinates:', demoLat, demoLng);
+  };
+
   const getCurrentLocation = () => {
-    if (navigator.geolocation) {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationError(null);
+    setCapturedAddress(null);
+
+    // Try different accuracy modes for better compatibility
+    const tryLocationCapture = (highAccuracy: boolean) => {
+      const options = {
+        enableHighAccuracy: highAccuracy,  // Start with requested accuracy
+        timeout: highAccuracy ? 30000 : 15000,  // Shorter timeout for low accuracy
+        maximumAge: highAccuracy ? 60000 : 300000  // Accept older cached locations for low accuracy
+      };
+
+      console.log(`🔍 Trying location capture with ${highAccuracy ? 'high' : 'low'} accuracy...`);
+      
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          setLocation({ lat, lng });
-          setFormData(prev => ({
-            ...prev,
-            latitude: lat.toString(),
-            longitude: lng.toString()
-          }));
-          toast.success('Location captured successfully!');
+        async (position) => {
+          try {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            console.log('✅ Location captured successfully:', { lat, lng, accuracy });
+
+            // Update location state
+            setLocation({ lat, lng });
+            
+            // Update form data with coordinates
+            setFormData(prev => ({
+              ...prev,
+              latitude: lat.toString(),
+              longitude: lng.toString()
+            }));
+
+            const accuracyText = highAccuracy ? `±${Math.round(accuracy)}m` : '±100m-1km (network)';
+            toast.success(`Location captured! Accuracy: ${accuracyText}`);
+
+            // Step 2: Address Lookup using OpenStreetMap (FREE)
+            await lookupAddressFromCoordinates(lat, lng);
+
+          } catch (error) {
+            console.error('Error in location capture:', error);
+            setLocationError('Failed to process location data');
+            toast.error('Location captured but address lookup failed');
+          } finally {
+            setLocationLoading(false);
+          }
         },
         (error) => {
-          console.error('Error getting location:', error);
-          setFormData(prev => ({
-            ...prev,
-            latitude: '18.5204',
-            longitude: '73.8567'
-          }));
-          toast.info('Demo location set (Pune, Maharashtra)');
-        }
+          console.error('GPS Error:', error);
+          
+          if (highAccuracy && error.code === error.POSITION_UNAVAILABLE) {
+            console.log('🔄 High accuracy failed, trying low accuracy...');
+            // Try again with low accuracy
+            tryLocationCapture(false);
+            return;
+          }
+          
+          setLocationLoading(false);
+          
+          let errorMessage = 'Failed to capture location';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Location access denied. Please enable location services and try again.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'Location unavailable on this device. Try demo mode or manual entry.';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'Location request timed out. Please try again.';
+              break;
+            default:
+              errorMessage = 'Unknown location error occurred.';
+          }
+          
+          setLocationError(errorMessage);
+          toast.error(errorMessage);
+        },
+        options
       );
-    } else {
-      toast.error('Geolocation is not supported by this browser.');
+    };
+
+    // Start with high accuracy, fall back to low accuracy
+    tryLocationCapture(true);
+  };
+
+  // Manual coordinate entry with address lookup
+  const handleManualCoordinateEntry = async () => {
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      toast.error('Please enter valid coordinates');
+      return;
+    }
+    
+    if (lat < -90 || lat > 90) {
+      toast.error('Latitude must be between -90 and 90');
+      return;
+    }
+    
+    if (lng < -180 || lng > 180) {
+      toast.error('Longitude must be between -180 and 180');
+      return;
+    }
+    
+    // Set location state
+    setLocation({ lat, lng });
+    
+    // Look up address
+    await lookupAddressFromCoordinates(lat, lng);
+  };
+
+  // OpenStreetMap reverse geocoding (FREE)
+  const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
+    setGeocodingLoading(true);
+    
+    try {
+      // OpenStreetMap Nominatim API (FREE, no API key required)
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.display_name) {
+        // Parse address components
+        const address = data.display_name;
+        const addressParts = data.address;
+        
+        // Extract address components
+        const streetAddress = addressParts?.road ? 
+          (addressParts.house_number ? `${addressParts.house_number} ${addressParts.road}` : addressParts.road).trim() : '';
+        const city = addressParts?.city || addressParts?.town || addressParts?.village || '';
+        const state = addressParts?.state || '';
+        const postalCode = addressParts?.postcode || '';
+        const ward = addressParts?.['addr:city_district'] || addressParts?.suburb || '';
+        const area = addressParts?.neighbourhood || addressParts?.suburb || '';
+        
+        // Update form data with address information
+        setFormData(prev => ({
+          ...prev,
+          address: address,
+          street_address: streetAddress,
+          city: city,
+          state: state,
+          postal_code: postalCode,
+          ward_number_from_gps: ward,
+          area_from_gps: area
+        }));
+        
+        // Set captured address for display
+        setCapturedAddress(address);
+        
+        toast.success('Address detected successfully!');
+        
+        // Auto-fill some form fields if they're empty
+        if (!formData.locality && area) {
+          setFormData(prev => ({ ...prev, locality: area }));
+        }
+        if (!formData.city && city) {
+          setFormData(prev => ({ ...prev, city: city }));
+        }
+        if (!formData.pincode && postalCode) {
+          setFormData(prev => ({ ...prev, pincode: postalCode }));
+        }
+        
+      } else {
+        throw new Error('No address data received');
+      }
+      
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setLocationError('Address lookup failed. You can enter address manually.');
+      toast.warning('Address lookup failed. Please enter address manually.');
+    } finally {
+      setGeocodingLoading(false);
     }
   };
 
@@ -592,6 +858,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           rain_water_harvesting: false,
           latitude: '',
           longitude: '',
+          // New address fields
+          address: '',
+          street_address: '',
+          city: '',
+          state: '',
+          postal_code: '',
+          ward_number_from_gps: '',
+          area_from_gps: '',
           remarks: '',
           edit_comment: ''
         });
@@ -1241,47 +1515,189 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             <Grid item xs={12}>
               <Paper sx={{ p: 3, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
-                  📍 GPS Location
+                  📍 GPS Location & Address
                 </Typography>
                 
                 <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Latitude"
                       value={formData.latitude}
                       onChange={(e) => handleInputChange('latitude', e.target.value)}
                       placeholder="18.5204"
+                      disabled={locationLoading}
                     />
                   </Grid>
                   
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Longitude"
                       value={formData.longitude}
                       onChange={(e) => handleInputChange('longitude', e.target.value)}
                       placeholder="73.8567"
+                      disabled={locationLoading}
                     />
                   </Grid>
                   
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <Button
                       variant="contained"
                       startIcon={<LocationOn />}
                       onClick={getCurrentLocation}
                       fullWidth
+                      disabled={locationLoading}
                     >
-                      Capture GPS
+                      {locationLoading ? (
+                        <>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Capturing...
+                        </>
+                      ) : (
+                        '📍 Capture GPS Location'
+                      )}
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<LocationOn />}
+                      onClick={handleManualCoordinateEntry}
+                      fullWidth
+                      disabled={geocodingLoading || !formData.latitude || !formData.longitude}
+                    >
+                      {geocodingLoading ? (
+                        <>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Looking up...
+                        </>
+                      ) : (
+                        '🔍 Lookup Address'
+                      )}
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={testGPSFunctionality}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🧪 Test GPS Functionality (Debug)
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="success"
+                      onClick={enableDemoMode}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🎯 Enable Demo Mode (Test with Pune Coordinates)
                     </Button>
                   </Grid>
                 </Grid>
                 
-                {location && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    Location captured: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                {/* Location Status */}
+                {locationLoading && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      📡 Acquiring GPS signal... Please wait (may take 30 seconds)
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Ensure you're outdoors with clear sky view for best accuracy
+                    </Typography>
                   </Alert>
                 )}
+                
+                {geocodingLoading && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      🔍 Looking up address from coordinates...
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {location && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>✅ GPS Location Captured Successfully!</strong>
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': { textDecoration: 'underline' }
+                      }}
+                      onClick={() => {
+                        const coords = `${location.lat.toFixed(6)}°N, ${location.lng.toFixed(6)}°E`;
+                        navigator.clipboard.writeText(coords);
+                        toast.success('Coordinates copied to clipboard!');
+                      }}
+                    >
+                      <strong>Coordinates:</strong> {location.lat.toFixed(6)}°N, {location.lng.toFixed(6)}°E
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Click coordinates to copy to clipboard
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Captured Address Display */}
+                {capturedAddress && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>🏠 Detected Address:</strong>
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                      {capturedAddress}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Address components have been auto-filled in the form above
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Error Display */}
+                {locationError && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>⚠️ Location Error:</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      {locationError}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      You can still enter coordinates and address manually
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Manual Entry Instructions */}
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    <strong>💡 Location Capture Instructions:</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Mobile Devices:</strong> Use built-in GPS for high accuracy (±3-10m)
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Desktop Browsers:</strong> Uses network location (less accurate)
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Manual Entry:</strong> You can always enter coordinates manually
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                    GPS works best outdoors with clear sky view. Address lookup uses free OpenStreetMap service.
+                  </Typography>
+                </Alert>
               </Paper>
             </Grid>
             

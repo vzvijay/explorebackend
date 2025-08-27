@@ -35,6 +35,11 @@ const DashboardLayout: React.FC = () => {
                 New Survey
               </Button>
             )}
+            {['admin', 'municipal_officer', 'engineer'].includes(user?.role || '') && (
+              <Button color="inherit" onClick={() => navigate('/admin')}>
+                Admin Dashboard
+              </Button>
+            )}
           </ButtonGroup>
           
           <Typography variant="body2" sx={{ mr: 2 }}>
