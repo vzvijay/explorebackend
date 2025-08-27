@@ -21,7 +21,9 @@ const LoginPage: React.FC = () => {
     setError('');
     
     try {
-      await login({ email, password });
+      // Clean the email/username field - remove @ symbol if browser adds it automatically
+      const cleanEmail = email.startsWith('@') ? email.substring(1) : email;
+      await login({ email: cleanEmail, password });
     } catch (err) {
       setError('Invalid email or password');
     }
