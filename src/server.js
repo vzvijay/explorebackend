@@ -22,6 +22,7 @@ try {
 // Import routes
 const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
+const sketchPhotoRoutes = require('./routes/sketchPhoto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -77,6 +78,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
+app.use('/api/sketch-photo', sketchPhotoRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

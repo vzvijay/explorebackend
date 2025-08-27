@@ -192,6 +192,18 @@ const Property = sequelize.define('Property', {
     allowNull: true
   },
   
+  // Sketch Photo (Hand-drawn sketch before digital signature)
+  sketch_photo: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Path to hand-drawn sketch photo file'
+  },
+  sketch_photo_captured_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when sketch photo was captured'
+  },
+  
   // Tax Assessment
   assessment_year: {
     type: DataTypes.INTEGER,
