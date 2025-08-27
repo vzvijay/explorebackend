@@ -764,6 +764,39 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Upload sketch photo to backend
+  const uploadSketchPhoto = async (propertyId: string): Promise<string | null> => {
+    if (!sketchPhotoFile) {
+      return null;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('sketch_photo', sketchPhotoFile);
+
+      const response = await fetch(`http://localhost:3000/api/sketch-photo/${propertyId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to upload sketch photo');
+      }
+
+      const result = await response.json();
+      toast.success('Sketch photo uploaded successfully!');
+      return result.data.sketch_photo;
+    } catch (error: any) {
+      console.error('Error uploading sketch photo:', error);
+      toast.error(`Failed to upload sketch photo: ${error.message}`);
+      return null;
+    }
+  };
+
   const submitSurvey = async () => {
     setLoading(true);
     try {
@@ -777,7 +810,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       }
 
       // Validate edit comment for post-submission edits (if this is an edit)
-      if (formData.edit_comment === undefined && formData.survey_number !== `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`) {
+      if (isEditMode && editingProperty && editingProperty.survey_status !== 'draft') {
         if (!formData.edit_comment || formData.edit_comment.trim() === '') {
           toast.error('Edit comment is required for post-submission edits');
           setLoading(false);
@@ -809,6 +842,31 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.updateProperty(editingProperty.id, apiData);
         toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
+        // Upload sketch photo if there's a new one
+        if (sketchPhotoFile) {
+          const uploadedPhotoPath = await uploadSketchPhoto(editingProperty.id);
+          if (uploadedPhotoPath) {
+            // Update the property with the new sketch photo path
+            await propertiesApi.updateProperty(editingProperty.id, {
+              sketch_photo: uploadedPhotoPath,
+              sketch_photo_captured_at: new Date().toISOString(),
+              edit_comment: formData.edit_comment // Include edit comment to pass validation
+            } as any); // Type assertion to bypass Property interface limitation
+          }
+        }
+        
+        // Submit the updated property for review (Always Editable System)
+        console.log('🔄 Attempting to submit property:', editingProperty.id);
+        try {
+          const submitResponse = await propertiesApi.submitProperty(editingProperty.id);
+          console.log('✅ Property submitted successfully:', submitResponse);
+          toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
+        } catch (submitError: any) {
+          console.error('❌ Error submitting property:', submitError);
+          toast.error(`Failed to submit survey: ${submitError.response?.data?.message || 'Unknown error'}`);
+          // Don't return here, let the edit complete
+        }
+        
         // Call callback if provided
         if (onEditComplete) {
           onEditComplete();
@@ -818,6 +876,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.createProperty(apiData);
         
         if (response.data && response.data.property && response.data.property.id) {
+          // Upload sketch photo if there's one
+          if (sketchPhotoFile) {
+            const uploadedPhotoPath = await uploadSketchPhoto(response.data.property.id);
+            if (uploadedPhotoPath) {
+              // Update the property with the sketch photo path
+              await propertiesApi.updateProperty(response.data.property.id, {
+                sketch_photo: uploadedPhotoPath,
+                sketch_photo_captured_at: new Date().toISOString()
+              });
+            }
+          }
+          
           await propertiesApi.submitProperty(response.data.property.id);
           toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
         }
@@ -1865,12 +1935,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                setSketchPhotoFile(file);
-                                const reader = new FileReader();
-                                reader.onload = (e) => {
-                                  setSketchPhoto(e.target?.result as string);
-                                };
-                                reader.readAsDataURL(file);
+                                handleSketchPhotoCapture(file);
                               }
                             }}
                           />
@@ -2094,6 +2159,21 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       default:
         return 'Unknown step';
     }
+  };
+
+  // Handle immediate sketch photo upload after capture
+  const handleSketchPhotoCapture = async (file: File) => {
+    setSketchPhotoFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSketchPhoto(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    // Show success message
+    toast.success('Sketch photo captured successfully! It will be uploaded when you submit the survey.');
   };
 
   return (
