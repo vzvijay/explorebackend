@@ -24,6 +24,7 @@ const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
 const sketchPhotoRoutes = require('./routes/sketchPhoto');
 const adminRoutes = require('./routes/admin');
+const debugRoutes = require('./routes/debug');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -184,6 +185,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/sketch-photo', sketchPhotoRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/debug', debugRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
