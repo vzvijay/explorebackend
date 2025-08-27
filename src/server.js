@@ -23,6 +23,7 @@ try {
 const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
 const sketchPhotoRoutes = require('./routes/sketchPhoto');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -79,6 +80,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/sketch-photo', sketchPhotoRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -145,8 +147,9 @@ async function startServer() {
 
     // Sync database models (create tables if they don't exist)
     if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: true });
-      console.log('✓ Database models synchronized');
+      // Use force: false to avoid altering existing tables
+      await sequelize.sync({ force: false });
+      console.log('✓ Database models synchronized (no alterations)');
     }
 
     // Start server

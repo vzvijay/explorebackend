@@ -260,7 +260,8 @@ const submitProperty = async (req, res) => {
     }
 
     await property.update({
-      survey_status: 'submitted'
+      survey_status: 'submitted',
+      approval_status: 'pending_approval'
     });
 
     res.json({

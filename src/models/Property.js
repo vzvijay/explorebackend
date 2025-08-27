@@ -220,6 +220,37 @@ const Property = sequelize.define('Property', {
     defaultValue: 'draft'
   },
   
+  // Admin Approval Workflow
+  approval_status: {
+    type: DataTypes.ENUM('pending_approval', 'approved', 'rejected'),
+    defaultValue: 'pending_approval',
+    comment: 'Current approval status for admin workflow'
+  },
+  approved_by: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    comment: 'ID of admin user who approved/rejected the survey'
+  },
+  approved_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when survey was approved/rejected'
+  },
+  rejection_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Reason for rejection if survey was rejected'
+  },
+  admin_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Additional notes from admin during approval process'
+  },
+  
   // Additional Information
   remarks: {
     type: DataTypes.TEXT,
