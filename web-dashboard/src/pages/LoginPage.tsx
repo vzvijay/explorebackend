@@ -82,24 +82,6 @@ const LoginPage: React.FC = () => {
             >
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
-            
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Demo Credentials:
-              </Typography>
-              <Typography variant="body2">
-                Admin: admin@explore.com
-              </Typography>
-              <Typography variant="body2">
-                Username: gajanan.tayde
-              </Typography>
-              <Typography variant="body2">
-                Username: vilas.tavde
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Password: admin123 / gajanan@123 / vilas@123
-              </Typography>
-            </Box>
           </Box>
         </Paper>
       </Box>
