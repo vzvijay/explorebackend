@@ -63,7 +63,12 @@ router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, profileUpdateValidation, updateProfile);
 router.put('/change-password', authenticateToken, passwordChangeValidation, changePassword);
 
-// Temporary password reset endpoint (remove after testing)
+// Test route to verify file loading
+router.get('/test-route', (req, res) => {
+  res.json({ message: 'Auth routes file is loaded correctly', timestamp: new Date().toISOString() });
+});
+
+// Temporary password reset endpoint (remove after testing) - V2
 router.post('/reset-gajanan-password', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
