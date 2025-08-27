@@ -68,6 +68,80 @@ router.get('/test-route', (req, res) => {
   res.json({ message: 'Auth routes file is loaded correctly', timestamp: new Date().toISOString() });
 });
 
+// Temporary endpoint to create new admin user
+router.post('/create-admin', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { User } = require('../models');
+    
+    // New admin user details
+    const newAdmin = {
+      employee_id: 'MH2024ADM004',
+      first_name: 'Gajanan',
+      last_name: 'Tayde',
+      email: 'gajanan@gmail.com',
+      phone: '+91-9876543210',
+      password: 'gajanan@123',
+      role: 'admin',
+      department: 'Survey Department',
+      assigned_area: 'All Areas',
+      is_active: true
+    };
+    
+    // Generate password hash
+    const saltRounds = 12;
+    const passwordHash = await bcrypt.hash(newAdmin.password, saltRounds);
+    
+    // Test the hash
+    const isValid = await bcrypt.compare(newAdmin.password, passwordHash);
+    
+    if (isValid) {
+      // Create new user
+      const user = await User.create({
+        employee_id: newAdmin.employee_id,
+        first_name: newAdmin.first_name,
+        last_name: newAdmin.last_name,
+        email: newAdmin.email,
+        phone: newAdmin.phone,
+        password: passwordHash,
+        role: newAdmin.role,
+        department: newAdmin.department,
+        assigned_area: newAdmin.assigned_area,
+        is_active: newAdmin.is_active
+      });
+      
+      res.json({
+        success: true,
+        message: 'New admin user created successfully',
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          employee_id: user.employee_id
+        },
+        loginCredentials: {
+          email: newAdmin.email,
+          password: newAdmin.password,
+          role: newAdmin.role
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Password hash generation failed'
+      });
+    }
+    
+  } catch (error) {
+    console.error('User creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'User creation failed',
+      error: error.message
+    });
+  }
+});
+
 // Temporary password reset endpoint (remove after testing) - V2
 router.post('/reset-gajanan-password', async (req, res) => {
   try {
