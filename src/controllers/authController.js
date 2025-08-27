@@ -28,12 +28,17 @@ const login = async (req, res) => {
     }
 
     const { email, password } = req.body;
-    console.log('🔍 Login attempt - Email/Username:', email);
+    
+    // Clean the email/username field - remove @ symbol if frontend sends it
+    const cleanEmail = email.startsWith('@') ? email.substring(1) : email;
+    
+    console.log('🔍 Login attempt - Original Email/Username:', email);
+    console.log('🔍 Login attempt - Cleaned Email/Username:', cleanEmail);
     console.log('🔍 Login attempt - Password length:', password ? password.length : 0);
 
-    // Find user by email
+    // Find user by cleaned email
     const user = await User.findOne({ 
-      where: { email, is_active: true } 
+      where: { email: cleanEmail, is_active: true } 
     });
 
     console.log('🔍 User lookup result:', user ? {
