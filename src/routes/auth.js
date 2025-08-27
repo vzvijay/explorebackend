@@ -63,4 +63,45 @@ router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, profileUpdateValidation, updateProfile);
 router.put('/change-password', authenticateToken, passwordChangeValidation, changePassword);
 
+// Temporary password reset endpoint (remove after testing)
+router.post('/reset-gajanan-password', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { User } = require('../models');
+    
+    const password = 'gajanan@123';
+    const saltRounds = 12;
+    
+    // Generate new hash
+    const newHash = await bcrypt.hash(password, saltRounds);
+    
+    // Update user password
+    const user = await User.findOne({ where: { email: 'gajanan.tayde' } });
+    if (user) {
+      await user.update({ password: newHash });
+      
+      // Test the new hash
+      const isValid = await bcrypt.compare(password, newHash);
+      
+      res.json({
+        success: true,
+        message: 'Password reset successful',
+        hashTest: isValid,
+        newHash: newHash.substring(0, 20) + '...'
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Password reset failed'
+    });
+  }
+});
+
 module.exports = router; 
