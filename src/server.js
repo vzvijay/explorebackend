@@ -29,13 +29,30 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "http://localhost:3000", "https:"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'", "http://localhost:3000"]
+    }
+  }
+}));
 
 // CORS configuration
 app.use(cors({
   origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:3002'],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Pre-flight requests for CORS
+app.options('*', cors());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -63,7 +80,31 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
+  setHeaders: (res, path) => {
+    // Set proper headers for image files
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    }
+    
+    // Allow cross-origin access for images
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Remove security headers that block image display
+    res.removeHeader('Cross-Origin-Resource-Policy');
+    res.removeHeader('Cross-Origin-Opener-Policy');
+    
+    // Add cache control to prevent 304 responses from blocking CORS
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -74,6 +115,68 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV,
     database: modelsInitialized ? 'connected' : 'disconnected'
   });
+});
+
+// Debug endpoint for file serving
+app.get('/debug/uploads', (req, res) => {
+  const uploadsPath = path.join(__dirname, '..', 'uploads');
+  const sketchesPath = path.join(uploadsPath, 'sketches');
+  
+  try {
+    const fs = require('fs');
+    const sketches = fs.readdirSync(sketchesPath);
+    
+    res.json({
+      success: true,
+      __dirname: __dirname,
+      uploadsPath: uploadsPath,
+      sketchesPath: sketchesPath,
+      sketches: sketches.slice(0, 5), // Show first 5 files
+      exists: {
+        uploads: fs.existsSync(uploadsPath),
+        sketches: fs.existsSync(sketchesPath)
+      }
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      __dirname: __dirname,
+      uploadsPath: uploadsPath,
+      sketchesPath: sketchesPath
+    });
+  }
+});
+
+// Specific route for sketch photos to ensure proper CORS headers
+app.get('/uploads/sketches/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, '..', 'uploads', 'sketches', filename);
+  
+  // Set CORS headers explicitly
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  // Set content type based on file extension
+  if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+    res.setHeader('Content-Type', 'image/jpeg');
+  } else if (filename.endsWith('.png')) {
+    res.setHeader('Content-Type', 'image/png');
+  }
+  
+  // Prevent caching to avoid 304 responses
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
+  // Remove security headers that block image display
+  res.removeHeader('Cross-Origin-Resource-Policy');
+  res.removeHeader('Cross-Origin-Opener-Policy');
+  
+  // Send the file
+  res.sendFile(filePath);
 });
 
 // API routes

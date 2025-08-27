@@ -252,23 +252,47 @@ const submitProperty = async (req, res) => {
       });
     }
 
-    if (property.survey_status !== 'draft') {
-      return res.status(400).json({
-        success: false,
-        message: 'Property is already submitted'
+    // Always Editable System: Field executives can submit properties in any status
+    if (req.user.role === 'field_executive') {
+      // Check ownership
+      if (property.surveyed_by !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied - you can only submit your own surveys'
+        });
+      }
+
+      // For field executives, allow submission regardless of current status
+      await property.update({
+        survey_status: 'submitted',
+        approval_status: 'pending_approval'
+      });
+
+      res.json({
+        success: true,
+        message: 'Property submitted for review successfully',
+        data: { property }
+      });
+    } else {
+      // For other roles, maintain original logic
+      if (property.survey_status !== 'draft') {
+        return res.status(400).json({
+          success: false,
+          message: 'Property is already submitted'
+        });
+      }
+
+      await property.update({
+        survey_status: 'submitted',
+        approval_status: 'pending_approval'
+      });
+
+      res.json({
+        success: true,
+        message: 'Property submitted for review successfully',
+        data: { property }
       });
     }
-
-    await property.update({
-      survey_status: 'submitted',
-      approval_status: 'pending_approval'
-    });
-
-    res.json({
-      success: true,
-      message: 'Property submitted for review successfully',
-      data: { property }
-    });
 
   } catch (error) {
     console.error('Submit property error:', error);
