@@ -53,10 +53,11 @@ const LoginPage: React.FC = () => {
               required
               fullWidth
               id="email"
-              label="Email Address"
+              label="Email or Username"
               name="email"
               autoComplete="email"
               autoFocus
+              placeholder="Enter email or username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -87,10 +88,16 @@ const LoginPage: React.FC = () => {
                 Demo Credentials:
               </Typography>
               <Typography variant="body2">
-                Admin: admin@maharashtra.gov.in
+                Admin: admin@explore.com
               </Typography>
               <Typography variant="body2">
-                Password: password123
+                Username: gajanan.tayde
+              </Typography>
+              <Typography variant="body2">
+                Username: vilas.tavde
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Password: admin123 / gajanan@123 / vilas@123
               </Typography>
             </Box>
           </Box>
