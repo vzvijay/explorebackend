@@ -6,15 +6,12 @@ import {
   Grid,
   Card,
   CardContent,
-  Paper,
   Chip,
   Button,
-  Divider,
   CircularProgress,
   Alert,
   Stack,
   IconButton,
-  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -27,16 +24,8 @@ import {
   Image as ImageIcon,
   Person as PersonIcon,
   Home as HomeIcon,
-  Business as BusinessIcon,
-  LocationOn as LocationIcon,
-  CalendarToday as CalendarIcon,
-  Assignment as AssignmentIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Schedule as ScheduleIcon
+  Assignment as AssignmentIcon
 } from '@mui/icons-material';
-import { toast } from 'react-toastify';
-import { useAuth } from '../contexts/AuthContext';
 import { Property } from '../types';
 import api from '../services/api';
 import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
@@ -44,7 +33,6 @@ import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 const PropertyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
@@ -419,12 +407,13 @@ const PropertyDetailPage: React.FC = () => {
               
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                 <SketchPhotoDisplay
-                  sketchPhotoPath={property.sketch_photo}
-                  capturedAt={property.sketch_photo_captured_at}
+                  sketchPhotoPath={property.sketch_photo || null}
+                  capturedAt={property.sketch_photo_captured_at || null}
                   surveyNumber={property.survey_number}
                   ownerName={property.owner_name}
-                  size="medium"
                   showMetadata={true}
+                  size="medium"
+                  downloadable={true}
                 />
               </Box>
               

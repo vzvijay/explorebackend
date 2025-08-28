@@ -54,6 +54,9 @@ export interface Property {
   construction_year?: number | null;
   number_of_floors: number;
   
+  // Zone Information
+  zone?: string;
+  
   // Building Permission
   building_permission: boolean;
   bp_number?: string;
@@ -98,6 +101,10 @@ export interface Property {
   approved_at?: string | null;
   rejection_reason?: string | null;
   admin_notes?: string | null;
+  
+  // Edit Tracking
+  edit_count?: number;
+  last_edit_date?: string;
   
   // Additional Information
   remarks?: string;
