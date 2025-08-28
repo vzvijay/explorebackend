@@ -148,9 +148,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // New state variables for sketch photo dialog
   const [sketchPhotoDialogOpen, setSketchPhotoDialogOpen] = useState(false);
   const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
-  const [sketchPhotoStream, setSketchPhotoStream] = useState<MediaStream | null>(null);
-  const [sketchPhotoVideo, setSketchPhotoVideo] = useState<HTMLVideoElement | null>(null);
-  const [sketchPhotoReady, setSketchPhotoReady] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -2588,17 +2585,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const closeSketchPhotoDialog = () => {
-    // Cleanup camera resources
-    if (sketchPhotoStream) {
-      sketchPhotoStream.getTracks().forEach(track => track.stop());
-      setSketchPhotoStream(null);
-    }
-    if (sketchPhotoVideo) {
-      sketchPhotoVideo.srcObject = null;
-      sketchPhotoVideo.remove();
-      setSketchPhotoVideo(null);
-    }
-    setSketchPhotoReady(false);
     setSketchPhotoDialogOpen(false);
   };
 
@@ -2607,146 +2593,91 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       setSketchPhotoCapturing(true);
       toast.info('Opening camera for sketch photo... Please wait.');
       
-      // Try to access camera with timeout
+      // Try to access camera first (same as owner photo)
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const cameraOptions = {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
-            facingMode: isMobileDevice() ? 'environment' : 'user',
-            width: { ideal: 1920, max: 2560 },
-            height: { ideal: 1080, max: 1440 }
+            facingMode: isMobileDevice() ? 'environment' : 'user', // Back camera on mobile, front on desktop
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           } 
-        };
-        
-        // Add timeout to camera access
-        const timeoutPromise = new Promise<MediaStream>((_, reject) => 
-          setTimeout(() => reject(new Error('Camera access timeout. Please try again.')), 30000)
-        );
-        
-        const stream = await Promise.race([
-          navigator.mediaDevices.getUserMedia(cameraOptions),
-          timeoutPromise
-        ]);
-        
-        // Store stream for cleanup
-        setSketchPhotoStream(stream);
-        
-        // Create video element to capture from camera
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        video.playsInline = true; // Better mobile support
-        video.style.width = '100%';
-        video.style.height = 'auto';
-        video.style.borderRadius = '8px';
-        
-        // Wait for video to be ready with timeout
-        const videoReadyPromise = new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Video initialization timeout')), 10000);
-          video.onloadedmetadata = () => {
-            clearTimeout(timeout);
-            resolve();
-          };
-          video.onerror = () => {
-            clearTimeout(timeout);
-            reject(new Error('Video initialization failed'));
-          };
         });
         
-        await videoReadyPromise;
-        await video.play();
+        // Create video element to capture from camera (same as owner photo)
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true; // Mute to avoid audio feedback
+        video.play();
         
-        // Store video element and mark as ready
-        setSketchPhotoVideo(video);
-        setSketchPhotoReady(true);
+        // Wait for video to be ready (same as owner photo)
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(true);
+        });
         
-        toast.success('Camera ready! Position your sketch in frame and click capture.');
+        // Show capture instruction (same as owner photo)
+        toast.info('Camera ready! Position your sketch in frame and click capture.');
         
+        // Create canvas to capture the photo (same as owner photo)
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Draw video frame to canvas (same as owner photo)
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Convert to data URL with 70% compression using unified function (same as owner photo)
+          const base64Data = compressPhotoWithCanvas(canvas, 0.7);
+          base64Data.filename = 'sketch_photo.jpg';
+          
+          // Store compressed base64 data
+          setSketchPhotoBase64(base64Data);
+          
+          // Create preview URL for display
+          const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
+          setSketchPhoto(previewUrl);
+          
+          // Stop camera stream (same as owner photo)
+          stream.getTracks().forEach(track => track.stop());
+          
+          setSketchPhotoDialogOpen(false);
+          toast.success('Sketch photo captured successfully from camera!');
+          
+          // Log success for debugging
+          console.log('📸 Sketch photo captured with canvas and 70% compression:', {
+            size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
+            type: base64Data.type,
+            base64Length: base64Data.data.length,
+            compression: '70% quality',
+            dimensions: `${canvas.width}x${canvas.height}`
+          });
+        }
       } else {
         toast.error('Camera not supported. Please use a device with camera access.');
       }
     } catch (error: any) {
       console.error('Camera access error:', error);
       
-      let errorMessage = 'Camera error. Please try again.';
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          errorMessage = 'Camera access denied. Please allow camera permissions and try again.';
+          toast.error('Camera access denied. Please allow camera permissions and try again.');
         } else if (error.name === 'NotFoundError') {
-          errorMessage = 'No camera found. Please use a device with camera access.';
-        } else if (error.message.includes('timeout')) {
-          errorMessage = error.message;
+          toast.error('No camera found. Please use a device with camera access.');
+        } else if (error.name === 'NotReadableError') {
+          toast.error('Camera is busy. Please try again.');
         } else {
-          errorMessage = `Camera error: ${error.message}`;
+          toast.error(`Camera error: ${error.message}`);
         }
+      } else {
+        toast.error('Camera error. Please try again.');
       }
-      
-      toast.error(errorMessage);
     } finally {
       setSketchPhotoCapturing(false);
     }
   };
 
-  // Function to actually capture the photo when user clicks capture button
-  const takeSketchPhoto = () => {
-    if (!sketchPhotoVideo || !sketchPhotoStream) {
-      toast.error('Camera not ready. Please wait for camera to initialize.');
-      return;
-    }
 
-    try {
-      // Create canvas to capture the photo with size limits
-      const canvas = document.createElement('canvas');
-      const maxWidth = 1920;
-      const maxHeight = 1080;
-      
-      // Calculate optimal dimensions
-      let { width, height } = sketchPhotoVideo;
-      if (width > maxWidth || height > maxHeight) {
-        const ratio = Math.min(maxWidth / width, maxHeight / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('Failed to get canvas context');
-      }
-      
-      // Draw video frame to canvas
-      ctx.drawImage(sketchPhotoVideo, 0, 0, width, height);
-      
-      // Convert to data URL with 70% compression using unified function
-      const base64Data = compressPhotoWithCanvas(canvas, 0.7);
-      base64Data.filename = 'sketch_photo.jpg';
-      
-      // Store compressed base64 data
-      setSketchPhotoBase64(base64Data);
-      
-      // Create preview URL for display
-      const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
-      setSketchPhoto(previewUrl);
-      
-      // Close dialog and cleanup
-      closeSketchPhotoDialog();
-      toast.success('Sketch photo captured successfully!');
-      
-      // Log success for debugging
-      console.log('📸 Sketch photo captured with canvas and 70% compression:', {
-        size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
-        type: base64Data.type,
-        base64Length: base64Data.data.length,
-        compression: '70% quality',
-        dimensions: `${width}x${height}`
-      });
-      
-    } catch (error) {
-      console.error('Photo capture error:', error);
-      toast.error('Failed to capture photo. Please try again.');
-    }
-  };
 
   // Function to open signature dialog and load existing signature if available
   const openSignatureDialog = () => {
@@ -5124,7 +5055,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           </Alert>
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {!sketchPhotoReady ? (
+            {!sketchPhoto ? (
               <>
                 <Button
                   variant="contained"
@@ -5134,7 +5065,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   fullWidth
                   sx={{ p: 2, fontSize: '1.1rem' }}
                 >
-                  {sketchPhotoCapturing ? '📸 Opening Camera...' : '📸 Open Camera'}
+                  {sketchPhotoCapturing ? '📸 Opening Camera...' : '📸 Open Camera & Capture Sketch'}
                 </Button>
                 
                 <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -5142,63 +5073,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 </Typography>
               </>
             ) : (
-              <>
-                {/* Live Camera Preview */}
-                <Box sx={{ 
-                  border: '2px solid #1976d2', 
-                  borderRadius: 2, 
-                  p: 1, 
-                  mb: 2,
-                  textAlign: 'center',
-                  backgroundColor: '#f5f5f5'
-                }}>
-                  <Typography variant="h6" gutterBottom color="primary.main">
-                    📸 Live Camera Preview
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Position your sketch in the frame below
-                  </Typography>
-                  
-                  {/* Camera Video Element Container */}
-                  <Box 
-                    ref={(el: HTMLDivElement | null) => {
-                      if (el && sketchPhotoVideo) {
-                        el.appendChild(sketchPhotoVideo);
-                      }
-                    }}
-                    sx={{
-                      width: '100%',
-                      maxHeight: '400px',
-                      overflow: 'hidden',
-                      borderRadius: '8px',
-                      backgroundColor: '#000'
-                    }}
-                  />
-                  
-                  {/* Capture Button */}
-                  <Box sx={{ mt: 2 }}>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      startIcon={<PhotoCamera />}
-                      onClick={takeSketchPhoto}
-                      size="large"
-                      sx={{ p: 2, fontSize: '1.1rem' }}
-                    >
-                      📸 CAPTURE PHOTO
-                    </Button>
-                  </Box>
-                </Box>
-                
-                <Typography variant="body2" color="text.secondary" textAlign="center">
-                  💡 <strong>Tip:</strong> Hold your device steady and ensure the sketch is clearly visible
-                </Typography>
-              </>
-            )}
-            
-            {/* Show captured photo if exists */}
-            {sketchPhoto && (
-              <Box sx={{ textAlign: 'center', mt: 2 }}>
+              <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="h6" gutterBottom color="success.main">
                   ✅ Sketch Photo Captured Successfully!
                 </Typography>
@@ -5225,11 +5100,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   <Button
                     variant="outlined"
                     startIcon={<PhotoCamera />}
-                    onClick={() => {
-                      setSketchPhoto(null);
-                      setSketchPhotoBase64(null);
-                      setSketchPhotoReady(false);
-                    }}
+                    onClick={captureSketchPhoto}
                     size="small"
                   >
                     📸 Retake Photo
