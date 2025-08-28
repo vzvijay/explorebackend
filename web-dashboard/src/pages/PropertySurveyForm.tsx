@@ -274,7 +274,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       // Load sketch photo if available
       if (editingProperty.sketch_photo) {
-        setSketchPhoto(editingProperty.sketch_photo);
+        // If it's a file path, construct the full URL
+        if (editingProperty.sketch_photo.startsWith('uploads/') || editingProperty.sketch_photo.startsWith('/uploads/')) {
+          const baseUrl = getApiBaseUrl();
+          const fullPhotoUrl = `${baseUrl}/${editingProperty.sketch_photo}`;
+          console.log('🖼️ Loading existing sketch photo from:', fullPhotoUrl);
+          setSketchPhoto(fullPhotoUrl);
+        } else {
+          // If it's already a full URL or data URL, use it as is
+          setSketchPhoto(editingProperty.sketch_photo);
+        }
       }
 
       // Load location if available
@@ -2288,34 +2297,44 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ textAlign: 'center' }}>
-                      {sketchPhoto ? (
-                        <Box>
-                          <img 
-                            src={sketchPhoto} 
-                            alt="Sketch Photo" 
-                            style={{ 
-                              maxWidth: '100%', 
-                              maxHeight: '300px', 
-                              border: '2px solid #4caf50',
-                              borderRadius: '8px'
-                            }}
-                          />
-                          <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
-                            ✅ Sketch photo captured successfully
-                          </Typography>
-                          <Button
-                            variant="outlined"
-                            color="secondary"
-                            onClick={() => {
-                              setSketchPhoto(null);
-                              setSketchPhotoFile(null);
-                            }}
-                            sx={{ mt: 1 }}
-                          >
-                            Remove Photo
-                          </Button>
-                        </Box>
-                      ) : (
+                                          {sketchPhoto ? (
+                      <Box>
+                        <img 
+                          src={sketchPhoto} 
+                          alt="Sketch Photo" 
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '300px', 
+                            border: '2px solid #4caf50',
+                            borderRadius: '8px'
+                          }}
+                          onError={(e) => {
+                            console.error('❌ Error loading sketch photo in form:', e);
+                            console.log('🖼️ Failed to load sketch photo from:', sketchPhoto);
+                          }}
+                          onLoad={() => {
+                            console.log('✅ Sketch photo loaded successfully in form from:', sketchPhoto);
+                          }}
+                        />
+                        <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
+                          ✅ Sketch photo captured successfully
+                        </Typography>
+                        <Typography variant="caption" display="block" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                          Source: {sketchPhoto.substring(0, 50)}...
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          onClick={() => {
+                            setSketchPhoto(null);
+                            setSketchPhotoFile(null);
+                          }}
+                          sx={{ mt: 1 }}
+                        >
+                          Remove Photo
+                        </Button>
+                      </Box>
+                    ) : (
                         <Box>
                           <input
                             accept="image/*"
