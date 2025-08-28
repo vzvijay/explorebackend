@@ -49,6 +49,7 @@ const PropertiesPage: React.FC = () => {
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve');
   const [reviewRemarks, setReviewRemarks] = useState('');
+  const [sketchPhotoModal, setSketchPhotoModal] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filters, setFilters] = useState<{
@@ -402,7 +403,7 @@ const PropertiesPage: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      {property.edit_count > 0 ? (
+                      {(property.edit_count || 0) > 0 ? (
                         <Box>
                           <Typography variant="caption" display="block">
                             Edited {property.edit_count} time(s)
@@ -615,6 +616,67 @@ const PropertiesPage: React.FC = () => {
                 </Alert>
               </Grid>
 
+              {/* Sketch Photo Section */}
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom>
+                  📸 Sketch Photo
+                </Typography>
+                {selectedProperty.sketch_photo ? (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Box 
+                      sx={{ 
+                        cursor: 'pointer',
+                        display: 'inline-block',
+                        border: '1px solid #ddd',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          boxShadow: 2
+                        }
+                      }}
+                      onClick={() => setSketchPhotoModal(true)}
+                    >
+                      <img
+                        src={`http://localhost:3000/${selectedProperty.sketch_photo}`}
+                        alt="Sketch Photo"
+                        style={{
+                          width: '200px',
+                          height: '150px',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    </Box>
+                    
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      Survey: {selectedProperty.survey_number} | Owner: {selectedProperty.owner_name}
+                    </Typography>
+                    
+                    {selectedProperty.sketch_photo_captured_at && (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Captured: {new Date(selectedProperty.sketch_photo_captured_at).toLocaleString('en-IN', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Typography>
+                    )}
+                    
+                    <Typography variant="caption" color="primary" display="block" sx={{ mt: 1 }}>
+                      Click to view larger
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No sketch photo available
+                    </Typography>
+                  </Box>
+                )}
+              </Grid>
+
               {/* Remarks */}
               {selectedProperty.remarks && (
                 <Grid item xs={12}>
@@ -660,6 +722,37 @@ const PropertiesPage: React.FC = () => {
             variant="contained"
           >
             {reviewAction === 'approve' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Sketch Photo Modal */}
+      <Dialog
+        open={sketchPhotoModal}
+        onClose={() => setSketchPhotoModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Sketch Photo - {selectedProperty?.survey_number}
+        </DialogTitle>
+        <DialogContent>
+          {selectedProperty?.sketch_photo && (
+            <img
+              src={`http://localhost:3000/${selectedProperty.sketch_photo}`}
+              alt="Sketch Photo"
+              style={{
+                width: '100%',
+                height: 'auto',
+                maxHeight: '70vh',
+                objectFit: 'contain'
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSketchPhotoModal(false)}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

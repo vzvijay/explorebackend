@@ -54,6 +54,9 @@ export interface Property {
   construction_year?: number | null;
   number_of_floors: number;
   
+  // Zone Information
+  zone?: string;
+  
   // Building Permission
   building_permission: boolean;
   bp_number?: string;
@@ -84,6 +87,8 @@ export interface Property {
   // Photos and Signatures
   owner_tenant_photo?: string | null;
   signature_data?: string | null;
+  sketch_photo?: string | null;
+  sketch_photo_captured_at?: string | null;
   
   // Tax Assessment
   assessment_year?: number;
@@ -91,6 +96,15 @@ export interface Property {
   
   // Survey Status
   survey_status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected';
+  approval_status?: 'pending_approval' | 'approved' | 'rejected';
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
+  admin_notes?: string | null;
+  
+  // Edit Tracking
+  edit_count?: number;
+  last_edit_date?: string;
   
   // Additional Information
   remarks?: string;
