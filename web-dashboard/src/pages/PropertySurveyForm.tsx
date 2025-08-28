@@ -52,7 +52,8 @@ import {
 import { propertiesApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-import { RoomDetail, PropertyUseDetails } from '../types';
+import { RoomDetail, PropertyUseDetails, Base64ImageData } from '../types';
+import { fileToBase64, createBase64PreviewUrl } from '../utils/base64Utils';
 
 // Utility function to get API base URL
 const getApiBaseUrl = () => {
@@ -140,8 +141,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null);
-  const [sketchPhotoFile, setSketchPhotoFile] = useState<File | null>(null);
+  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null); // Base64 string
+  const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null); // Base64 data with metadata
   const [photoCapturing, setPhotoCapturing] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
@@ -1081,44 +1082,46 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
-  // Upload sketch photo to backend
-  const uploadSketchPhoto = async (propertyId: string): Promise<string | null> => {
-    if (!sketchPhotoFile) {
+  // Save sketch photo base64 data to backend
+  const saveSketchPhoto = async (propertyId: string): Promise<string | null> => {
+    if (!sketchPhotoBase64) {
       return null;
     }
 
-    // File validation
-    if (sketchPhotoFile.size > 10 * 1024 * 1024) { // 10MB limit
+    // Base64 validation
+    if (!sketchPhotoBase64.data || sketchPhotoBase64.data.length === 0) {
+      toast.error('No sketch photo data to save.');
+      return null;
+    }
+
+    if (sketchPhotoBase64.size > 10 * 1024 * 1024) { // 10MB limit
       toast.error('Sketch photo too large. Please select an image under 10MB.');
       return null;
     }
 
-    if (!sketchPhotoFile.type.startsWith('image/')) {
-      toast.error('Please select a valid image file for the sketch photo.');
-      return null;
-    }
-
     try {
-      const formData = new FormData();
-      formData.append('sketch_photo', sketchPhotoFile);
-
       // Get API URL from environment or fallback
       const API_BASE_URL = getApiBaseUrl();
-      const uploadUrl = `${API_BASE_URL}/sketch-photo/${propertyId}`;
+      const saveUrl = `${API_BASE_URL}/properties/${propertyId}/sketch-photo`;
       
-      console.log('🔄 Uploading sketch photo to:', uploadUrl);
-      console.log('📁 File details:', {
-        name: sketchPhotoFile.name,
-        size: `${(sketchPhotoFile.size / 1024 / 1024).toFixed(2)}MB`,
-        type: sketchPhotoFile.type
+      console.log('🔄 Saving sketch photo base64 data to:', saveUrl);
+      console.log('📁 Base64 details:', {
+        size: `${(sketchPhotoBase64.size / 1024 / 1024).toFixed(2)}MB`,
+        type: sketchPhotoBase64.type,
+        base64Length: sketchPhotoBase64.data.length
       });
 
-      const response = await fetch(uploadUrl, {
+      const response = await fetch(saveUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
         },
-        body: formData
+        body: JSON.stringify({
+          sketch_photo_base64: sketchPhotoBase64.data,
+          sketch_photo_size: sketchPhotoBase64.size,
+          sketch_photo_type: sketchPhotoBase64.type
+        })
       });
 
       if (!response.ok) {
@@ -1127,26 +1130,26 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       }
 
       const result = await response.json();
-      toast.success('Sketch photo uploaded successfully!');
-      return result.data.sketch_photo;
+      toast.success('Sketch photo saved successfully!');
+      return result.data.sketch_photo_base64;
     } catch (error: any) {
-      console.error('❌ Error uploading sketch photo:', error);
+      console.error('❌ Error saving sketch photo:', error);
       
       // Provide specific error messages based on error type
-      let errorMessage = 'Failed to upload sketch photo';
+      let errorMessage = 'Failed to save sketch photo';
       
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         errorMessage = 'Network error: Cannot connect to server. Please check your internet connection.';
       } else if (error.name === 'AbortError') {
-        errorMessage = 'Upload timeout: Please try again.';
+        errorMessage = 'Save timeout: Please try again.';
       } else if (error.message.includes('HTTP 401')) {
         errorMessage = 'Authentication error: Please log in again.';
       } else if (error.message.includes('HTTP 413')) {
-        errorMessage = 'File too large: Please select a smaller image.';
+        errorMessage = 'Image too large: Please select a smaller image.';
       } else if (error.message.includes('HTTP 500')) {
         errorMessage = 'Server error: Please try again later.';
       } else if (error.message) {
-        errorMessage = `Upload failed: ${error.message}`;
+        errorMessage = `Save failed: ${error.message}`;
       }
       
       toast.error(errorMessage);
@@ -1200,10 +1203,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.updateProperty(editingProperty.id, apiData);
         toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
-        // Upload sketch photo if there's a new one
-        if (sketchPhotoFile) {
-          console.log('📤 Starting sketch photo upload for property:', editingProperty.id);
-          const uploadedPhotoPath = await uploadSketchPhoto(editingProperty.id);
+        // Save sketch photo if there's a new one
+        if (sketchPhotoBase64) {
+          console.log('📤 Starting sketch photo save for property:', editingProperty.id);
+          const uploadedPhotoPath = await saveSketchPhoto(editingProperty.id);
           if (uploadedPhotoPath) {
             console.log('✅ Sketch photo uploaded successfully, updating property...');
             // Update the property with the new sketch photo path
@@ -1239,10 +1242,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.createProperty(apiData);
         
         if (response.data && response.data.property && response.data.property.id) {
-          // Upload sketch photo if there's one
-          if (sketchPhotoFile) {
-            console.log('📤 Starting sketch photo upload for new property:', response.data.property.id);
-            const uploadedPhotoPath = await uploadSketchPhoto(response.data.property.id);
+          // Save sketch photo if there's one
+          if (sketchPhotoBase64) {
+            console.log('📤 Starting sketch photo save for new property:', response.data.property.id);
+            const uploadedPhotoPath = await saveSketchPhoto(response.data.property.id);
             if (uploadedPhotoPath) {
               console.log('✅ Sketch photo uploaded successfully, updating new property...');
               // Update the property with the sketch photo path
@@ -1317,7 +1320,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         setSignatureData('');
         setCapturedPhoto(null);
         setSketchPhoto(null);
-        setSketchPhotoFile(null);
+        setSketchPhotoBase64(null);
         setFormData(prev => ({ ...prev, sketch_photo: '' }));
         setActiveStep(0);
       }
@@ -2327,7 +2330,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                           color="secondary"
                           onClick={() => {
                             setSketchPhoto(null);
-                            setSketchPhotoFile(null);
+                            setSketchPhotoBase64(null);
                           }}
                           sx={{ mt: 1 }}
                         >
@@ -2571,7 +2574,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
-  // Handle immediate sketch photo upload after capture
+  // Handle immediate sketch photo capture and convert to base64
   const handleSketchPhotoCapture = async (file: File) => {
     try {
       // File validation
@@ -2585,29 +2588,27 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         return;
       }
 
-      // Log file details for debugging
-      console.log('📸 Sketch photo captured:', {
+      // Convert file to base64
+      const base64Data = await fileToBase64(file);
+      
+      // Store base64 data with metadata
+      setSketchPhotoBase64(base64Data);
+      
+      // Create preview URL for display
+      const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
+      setSketchPhoto(previewUrl);
+      
+      // Log success for debugging
+      console.log('📸 Sketch photo captured and converted to base64:', {
         name: file.name,
-        size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-        type: file.type,
+        size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
+        type: base64Data.type,
+        base64Length: base64Data.data.length,
         lastModified: new Date(file.lastModified).toLocaleString()
       });
-
-      setSketchPhotoFile(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSketchPhoto(e.target?.result as string);
-      };
-      reader.onerror = () => {
-        console.error('❌ Error reading sketch photo file');
-        toast.error('Error reading photo file. Please try again.');
-      };
-      reader.readAsDataURL(file);
       
       // Show success message
-      toast.success('Sketch photo captured successfully! It will be uploaded when you submit the survey.');
+      toast.success('Sketch photo captured successfully! It will be saved when you submit the survey.');
     } catch (error: any) {
       console.error('❌ Error capturing sketch photo:', error);
       toast.error('Error capturing photo. Please try again.');

@@ -87,7 +87,10 @@ export interface Property {
   // Photos and Signatures
   owner_tenant_photo?: string | null;
   signature_data?: string | null;
-  sketch_photo?: string | null;
+  sketch_photo?: string | null; // File path (legacy support)
+  sketch_photo_base64?: string | null; // Base64 encoded image data
+  sketch_photo_size?: number | null; // File size in bytes
+  sketch_photo_type?: string | null; // MIME type (e.g., image/jpeg)
   sketch_photo_captured_at?: string | null;
   
   // Tax Assessment
@@ -179,4 +182,19 @@ export interface AuthContextType {
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+}
+
+// Base64 Image types
+export interface Base64ImageData {
+  data: string; // Base64 encoded image
+  size: number; // File size in bytes
+  type: string; // MIME type
+  filename?: string; // Optional filename
+}
+
+export interface ImageUploadResult {
+  success: boolean;
+  base64Data?: Base64ImageData;
+  error?: string;
+  message?: string;
 } 
