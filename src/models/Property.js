@@ -196,7 +196,12 @@ const Property = sequelize.define('Property', {
   sketch_photo: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: 'Path to hand-drawn sketch photo file'
+    comment: 'Path to hand-drawn sketch photo file (legacy support)'
+  },
+  sketch_photo_base64: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Base64 encoded sketch photo data'
   },
   sketch_photo_captured_at: {
     type: DataTypes.DATE,

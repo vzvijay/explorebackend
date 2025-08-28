@@ -46,7 +46,7 @@ router.post('/multer-test', upload.single('test_file'), (req, res) => {
   res.json({ message: 'Multer middleware working', file: req.file ? 'File received' : 'No file' });
 });
 
-// POST /api/sketch-photo/:propertyId - Upload sketch photo
+// POST /api/sketch-photo/:propertyId - Upload sketch photo (File-based - Legacy)
 router.post('/:propertyId', auth, upload.single('sketch_photo'), async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -112,6 +112,78 @@ router.post('/:propertyId', auth, upload.single('sketch_photo'), async (req, res
   }
 });
 
+// POST /api/sketch-photo/:propertyId/base64 - Save Base64 sketch photo
+router.post('/:propertyId/base64', auth, async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { sketch_photo_base64, sketch_photo_size, sketch_photo_type } = req.body;
+
+    if (!sketch_photo_base64) {
+      return res.status(400).json({
+        success: false,
+        message: 'No sketch photo data provided'
+      });
+    }
+
+    if (!sketch_photo_size || !sketch_photo_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing photo metadata (size or type)'
+      });
+    }
+
+    // Validate Base64 data
+    if (typeof sketch_photo_base64 !== 'string' || sketch_photo_base64.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sketch photo data format'
+      });
+    }
+
+    // Check if property exists
+    const property = await Property.findByPk(propertyId);
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: 'Property not found'
+      });
+    }
+
+    // Check access permissions
+    if (req.user.role === 'field_executive' && property.surveyed_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - you can only upload sketch photos for your own surveys'
+      });
+    }
+
+    // Update property with Base64 data
+    await property.update({
+      sketch_photo_base64: sketch_photo_base64,
+      sketch_photo_captured_at: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: 'Sketch photo saved successfully',
+      data: {
+        sketch_photo_base64: sketch_photo_base64,
+        sketch_photo_size: sketch_photo_size,
+        sketch_photo_type: sketch_photo_type,
+        sketch_photo_captured_at: property.sketch_photo_captured_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Error saving Base64 sketch photo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save sketch photo',
+      error: error.message
+    });
+  }
+});
+
 // GET /api/sketch-photo/:propertyId - Get sketch photo info
 router.get('/:propertyId', auth, async (req, res) => {
   try {
@@ -143,6 +215,7 @@ router.get('/:propertyId', auth, async (req, res) => {
       success: true,
       data: {
         sketch_photo: property.sketch_photo,
+        sketch_photo_base64: property.sketch_photo_base64,
         sketch_photo_captured_at: property.sketch_photo_captured_at,
         property_id: propertyId
       }
@@ -198,6 +271,7 @@ router.delete('/:propertyId', auth, async (req, res) => {
 
     await property.update({
       sketch_photo: null,
+      sketch_photo_base64: null,
       sketch_photo_captured_at: null
     });
 
