@@ -1,4 +1,5 @@
 import api from './api';
+import { Base64ImageData } from '../types';
 
 export interface PendingApproval {
   id: string;
@@ -12,16 +13,14 @@ export interface PendingApproval {
   survey_date: string;
   surveyed_by: string;
   sketch_photo: string | null; // Legacy file path support
-  sketch_photo_base64?: string | null; // Base64 encoded image data
-  sketch_photo_size?: number | null; // File size in bytes
-  sketch_photo_type?: string | null; // MIME type
+  sketch_photo_base64?: Base64ImageData | null; // Base64 encoded image data with metadata
   sketch_photo_captured_at: string | null;
   surveyor: {
     id: string;
     first_name: string;
     last_name: string;
-    employee_id: string;
     role: string;
+    employee_id: string;
   };
 }
 
@@ -87,9 +86,7 @@ export interface PropertyForApproval {
   survey_date: string;
   surveyed_by: string;
   sketch_photo: string | null; // Legacy file path support
-  sketch_photo_base64?: string | null; // Base64 encoded image data
-  sketch_photo_size?: number | null; // File size in bytes
-  sketch_photo_type?: string | null; // MIME type
+  sketch_photo_base64?: Base64ImageData | null; // Base64 encoded image data with metadata
   sketch_photo_captured_at: string | null;
   surveyor: {
     id: string;
