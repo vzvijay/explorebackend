@@ -53,7 +53,7 @@ import { propertiesApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
 import { RoomDetail, PropertyUseDetails, Base64ImageData } from '../types';
-import { fileToBase64, createBase64PreviewUrl } from '../utils/base64Utils';
+import { createBase64PreviewUrl, getBase64Size } from '../utils/base64Utils';
 
 // Utility function to get API base URL
 const getApiBaseUrl = () => {
@@ -144,6 +144,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [sketchPhoto, setSketchPhoto] = useState<string | null>(null); // Base64 string
   const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null); // Base64 data with metadata
   const [photoCapturing, setPhotoCapturing] = useState(false);
+  
+  // New state variables for sketch photo dialog
+  const [sketchPhotoDialogOpen, setSketchPhotoDialogOpen] = useState(false);
+  const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -704,8 +708,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           // Draw video frame to canvas
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // Convert to data URL
-          const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                  // Convert to data URL with 70% compression
+        const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
           setCapturedPhoto(photoDataUrl);
           
           // Stop camera stream
@@ -2339,33 +2343,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       </Box>
                     ) : (
                         <Box>
-                          <input
-                            accept="image/*"
-                            style={{ display: 'none' }}
-                            id="sketch-photo-input"
-                            type="file"
-                            capture="environment"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                handleSketchPhotoCapture(file);
-                              }
-                            }}
-                          />
-                          <label htmlFor="sketch-photo-input">
-                            <Button
-                              variant="contained"
-                              color="primary"
-                              component="span"
-                              startIcon={<PhotoCamera />}
-                              sx={{ p: 3, fontSize: '1.1rem' }}
-                              fullWidth
-                            >
-                              📸 Capture Sketch Photo
-                            </Button>
-                          </label>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<PhotoCamera />}
+                            onClick={openSketchPhotoDialog}
+                            sx={{ p: 3, fontSize: '1.1rem' }}
+                            fullWidth
+                          >
+                            📸 Capture Sketch Photo
+                          </Button>
                           <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                            Tap to open camera or select from gallery
+                            Tap to open camera and capture your sketch
                           </Typography>
                         </Box>
                       )}
@@ -2574,44 +2563,106 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
-  // Handle immediate sketch photo capture and convert to base64
-  const handleSketchPhotoCapture = async (file: File) => {
+
+
+  // New functions for canvas-based sketch photo capture
+  const openSketchPhotoDialog = () => {
+    setSketchPhotoDialogOpen(true);
+  };
+
+  const closeSketchPhotoDialog = () => {
+    setSketchPhotoDialogOpen(false);
+  };
+
+  const captureSketchPhoto = async () => {
     try {
-      // File validation
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        toast.error('File too large. Please select an image under 10MB.');
-        return;
+      setSketchPhotoCapturing(true);
+      toast.info('Opening camera for sketch photo... Please wait.');
+      
+      // Try to access camera
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: isMobileDevice() ? 'environment' : 'user',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          } 
+        });
+        
+        // Create video element to capture from camera
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        video.play();
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(true);
+        });
+        
+        toast.info('Camera ready! Position your sketch in frame and click capture.');
+        
+        // Create canvas to capture the photo
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Draw video frame to canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Convert to data URL with 70% compression (same as owner photos)
+          const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          
+          // Convert to Base64ImageData format
+          const base64Data = {
+            data: photoDataUrl.split(',')[1], // Extract base64 data
+            size: getBase64Size(photoDataUrl.split(',')[1]),
+            type: 'image/jpeg',
+            filename: 'sketch_photo.jpg'
+          };
+          
+          // Store compressed base64 data
+          setSketchPhotoBase64(base64Data);
+          
+          // Create preview URL for display
+          const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
+          setSketchPhoto(previewUrl);
+          
+          // Stop camera stream
+          stream.getTracks().forEach(track => track.stop());
+          
+          setSketchPhotoDialogOpen(false);
+          toast.success('Sketch photo captured successfully with 70% compression!');
+          
+          // Log success for debugging
+          console.log('📸 Sketch photo captured with canvas and 70% compression:', {
+            size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
+            type: base64Data.type,
+            base64Length: base64Data.data.length,
+            compression: '70% quality'
+          });
+        }
+      } else {
+        toast.error('Camera not supported. Please use a device with camera access.');
       }
-
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select a valid image file.');
-        return;
-      }
-
-      // Convert file to base64
-      const base64Data = await fileToBase64(file);
-      
-      // Store base64 data with metadata
-      setSketchPhotoBase64(base64Data);
-      
-      // Create preview URL for display
-      const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
-      setSketchPhoto(previewUrl);
-      
-      // Log success for debugging
-      console.log('📸 Sketch photo captured and converted to base64:', {
-        name: file.name,
-        size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
-        type: base64Data.type,
-        base64Length: base64Data.data.length,
-        lastModified: new Date(file.lastModified).toLocaleString()
-      });
-      
-      // Show success message
-      toast.success('Sketch photo captured successfully! It will be saved when you submit the survey.');
     } catch (error: any) {
-      console.error('❌ Error capturing sketch photo:', error);
-      toast.error('Error capturing photo. Please try again.');
+      console.error('Camera access error:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          toast.error('Camera access denied. Please allow camera permissions.');
+        } else if (error.name === 'NotFoundError') {
+          toast.error('No camera found. Please use a device with camera access.');
+        } else {
+          toast.error('Camera error. Please try again.');
+        }
+      } else {
+        toast.error('Camera error. Please try again.');
+      }
+    } finally {
+      setSketchPhotoCapturing(false);
     }
   };
 
@@ -4963,6 +5014,102 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPhotoDialogOpen(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Sketch Photo Capture Dialog */}
+      <Dialog open={sketchPhotoDialogOpen} onClose={closeSketchPhotoDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Capture Sketch Photo</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            📸 This will open your device camera to capture a photo of your hand-drawn sketch.
+            <br />
+            💡 <strong>Tip:</strong> Use good lighting and ensure the sketch is clearly visible.
+            {!checkCameraSupport() && (
+              <>
+                <br />
+                ⚠️ <strong>Note:</strong> Your browser doesn't support camera access.
+              </>
+            )}
+            {isMobileDevice() && (
+              <>
+                <br />
+                📱 <strong>Mobile:</strong> Camera will open in your device's native camera app.
+              </>
+            )}
+          </Alert>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!sketchPhoto ? (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={sketchPhotoCapturing ? <CircularProgress size={20} /> : <PhotoCamera />}
+                  onClick={captureSketchPhoto}
+                  disabled={sketchPhotoCapturing}
+                  fullWidth
+                  sx={{ p: 2, fontSize: '1.1rem' }}
+                >
+                  {sketchPhotoCapturing ? '📸 Opening Camera...' : '📸 Open Camera & Capture Sketch'}
+                </Button>
+                
+                <Typography variant="body2" color="text.secondary" textAlign="center">
+                  Position your sketch on a flat surface with good lighting
+                </Typography>
+              </>
+            ) : (
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom color="success.main">
+                  ✅ Sketch Photo Captured Successfully!
+                </Typography>
+                
+                <Box sx={{ 
+                  border: '2px solid #4caf50', 
+                  borderRadius: 2, 
+                  p: 1, 
+                  mb: 2,
+                  display: 'inline-block'
+                }}>
+                  <img
+                    src={sketchPhoto}
+                    alt="Captured Sketch Photo"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '200px',
+                      borderRadius: '8px'
+                    }}
+                  />
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    onClick={captureSketchPhoto}
+                    size="small"
+                  >
+                    📸 Retake Photo
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Clear />}
+                    onClick={() => {
+                      setSketchPhoto(null);
+                      setSketchPhotoBase64(null);
+                    }}
+                    size="small"
+                  >
+                    🗑️ Clear Photo
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeSketchPhotoDialog}>Cancel</Button>
         </DialogActions>
       </Dialog>
 
