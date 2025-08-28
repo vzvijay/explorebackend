@@ -11,7 +11,10 @@ export interface PendingApproval {
   approval_status: string;
   survey_date: string;
   surveyed_by: string;
-  sketch_photo: string | null;
+  sketch_photo: string | null; // Legacy file path support
+  sketch_photo_base64?: string | null; // Base64 encoded image data
+  sketch_photo_size?: number | null; // File size in bytes
+  sketch_photo_type?: string | null; // MIME type
   sketch_photo_captured_at: string | null;
   surveyor: {
     id: string;
@@ -83,7 +86,10 @@ export interface PropertyForApproval {
   approval_status: string;
   survey_date: string;
   surveyed_by: string;
-  sketch_photo: string | null;
+  sketch_photo: string | null; // Legacy file path support
+  sketch_photo_base64?: string | null; // Base64 encoded image data
+  sketch_photo_size?: number | null; // File size in bytes
+  sketch_photo_type?: string | null; // MIME type
   sketch_photo_captured_at: string | null;
   surveyor: {
     id: string;

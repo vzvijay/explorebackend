@@ -532,6 +532,7 @@ const AdminDashboardPage: React.FC = () => {
                     <TableCell>
                       <SketchPhotoDisplay
                         sketchPhotoPath={property.sketch_photo}
+                        sketchPhotoBase64={property.sketch_photo_base64}
                         capturedAt={property.sketch_photo_captured_at}
                         surveyNumber={property.survey_number}
                         ownerName={property.owner_name}
@@ -755,6 +756,7 @@ const AdminDashboardPage: React.FC = () => {
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <SketchPhotoDisplay
                       sketchPhotoPath={propertyDetails.sketch_photo}
+                      sketchPhotoBase64={propertyDetails.sketch_photo_base64}
                       capturedAt={propertyDetails.sketch_photo_captured_at}
                       surveyNumber={propertyDetails.survey_number}
                       ownerName={propertyDetails.owner_name}
