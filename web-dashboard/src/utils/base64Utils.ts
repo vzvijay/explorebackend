@@ -1,4 +1,4 @@
-import { Base64ImageData, ImageUploadResult } from '../types';
+import { Base64ImageData } from '../types';
 
 /**
  * Convert a File object to base64 string

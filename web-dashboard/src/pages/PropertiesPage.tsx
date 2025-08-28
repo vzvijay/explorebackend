@@ -641,7 +641,7 @@ const PropertiesPage: React.FC = () => {
                       <SketchPhotoDisplay
                         sketchPhotoPath={selectedProperty.sketch_photo}
                         sketchPhotoBase64={selectedProperty.sketch_photo_base64}
-                        capturedAt={selectedProperty.sketch_photo_captured_at}
+                        capturedAt={selectedProperty.sketch_photo_captured_at || null}
                         surveyNumber={selectedProperty.survey_number}
                         ownerName={selectedProperty.owner_name}
                         showMetadata={false}
@@ -744,7 +744,7 @@ const PropertiesPage: React.FC = () => {
               <SketchPhotoDisplay
                 sketchPhotoPath={selectedProperty.sketch_photo}
                 sketchPhotoBase64={selectedProperty.sketch_photo_base64}
-                capturedAt={selectedProperty.sketch_photo_captured_at}
+                capturedAt={selectedProperty.sketch_photo_captured_at || null}
                 surveyNumber={selectedProperty.survey_number}
                 ownerName={selectedProperty.owner_name}
                 showMetadata={true}
