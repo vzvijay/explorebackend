@@ -163,6 +163,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     bathrooms: []
   });
   const [signatureData, setSignatureData] = useState<string>('');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Load existing property data when in edit mode
   React.useEffect(() => {
@@ -414,26 +415,94 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setSignatureData('');
   };
 
+  // Enhanced validation function with detailed field checking
+  const validateForm = () => {
+    const errors: string[] = [];
+    
+    // Basic Information validation
+    if (!formData.owner_name?.trim()) {
+      errors.push('Property Owner Name');
+    }
+    if (!formData.locality?.trim()) {
+      errors.push('Locality');
+    }
+    if (!formData.ward_number?.trim()) {
+      errors.push('Ward Number');
+    }
+    if (!formData.pincode?.trim()) {
+      errors.push('Pincode');
+    }
+    if (!formData.zone?.trim()) {
+      errors.push('Zone');
+    }
+    
+    // Property Details validation
+    if (!formData.property_type?.trim()) {
+      errors.push('Property Type');
+    }
+    if (!formData.construction_type?.trim()) {
+      errors.push('Construction Type');
+    }
+    
+    // Area measurements validation
+    if (!formData.plot_area?.trim()) {
+      errors.push('Plot Area');
+    }
+    if (!formData.built_up_area?.trim()) {
+      errors.push('Built-up Area');
+    }
+    if (!formData.carpet_area?.trim()) {
+      errors.push('Carpet Area');
+    }
+    
+    // Aadhar validation if provided
+    if (formData.aadhar_number && !validateAadhar(formData.aadhar_number)) {
+      errors.push('Valid Aadhar Number (format: 1234-5678-9012)');
+    }
+    
+    // Edit comment validation for post-submission edits
+    const isNewSurvey = formData.survey_number === `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`;
+    if (!isNewSurvey && (!formData.edit_comment || formData.edit_comment.trim() === '')) {
+      errors.push('Edit Comment');
+    }
+    
+    return errors;
+  };
+
   const handleNext = () => {
     // Validation for specific steps
     if (activeStep === 0) {
-      if (!formData.owner_name || !formData.locality || !formData.ward_number || !formData.pincode || !formData.zone) {
-        toast.error('Please fill all required fields in Basic Information');
+      const errors = validateForm().filter(error => 
+        ['Property Owner Name', 'Locality', 'Ward Number', 'Pincode', 'Zone'].includes(error)
+      );
+      
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        toast.error(`Please fill required fields: ${errors.join(', ')}`);
         return;
       }
+      
       if (formData.aadhar_number && !validateAadhar(formData.aadhar_number)) {
+        setValidationErrors(['Valid Aadhar Number (format: 1234-5678-9012)']);
         toast.error('Please enter a valid Aadhar number in format: 1234-5678-9012');
         return;
       }
     }
     
     if (activeStep === 2) {
-      if (!formData.plot_area || !formData.built_up_area || !formData.carpet_area) {
-        toast.error('Please fill all area measurements');
+      const errors = validateForm().filter(error => 
+        ['Plot Area', 'Built-up Area', 'Carpet Area'].includes(error)
+      );
+      
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        toast.error(`Please fill required fields: ${errors.join(', ')}`);
         return;
       }
     }
     
+    // Clear validation errors when moving to next step
+    setValidationErrors([]);
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
@@ -474,23 +543,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const submitSurvey = async () => {
     setLoading(true);
     try {
-      // Final validation
-      if (!formData.owner_name || !formData.locality || !formData.property_type || 
-          !formData.plot_area || !formData.built_up_area || !formData.carpet_area ||
-          !formData.ward_number || !formData.pincode || !formData.zone) {
-        toast.error('Please fill all required fields marked with *');
+      // Use enhanced validation function
+      const validationErrors = validateForm();
+      
+      if (validationErrors.length > 0) {
+        setValidationErrors(validationErrors);
+        toast.error(`Please fill required fields: ${validationErrors.join(', ')}`);
         setLoading(false);
         return;
       }
 
-      // Validate edit comment for post-submission edits (if this is an edit)
-      if (formData.edit_comment === undefined && formData.survey_number !== `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`) {
-        if (!formData.edit_comment || formData.edit_comment.trim() === '') {
-          toast.error('Edit comment is required for post-submission edits');
-          setLoading(false);
-          return;
-        }
-      }
+      // Clear validation errors when submission succeeds
+      setValidationErrors([]);
 
       const apiData = {
         ...formData,
@@ -933,8 +997,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             </Grid>
             
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Construction Type</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel>Construction Type *</InputLabel>
                 <Select
                   value={formData.construction_type}
                   onChange={(e) => handleInputChange('construction_type', e.target.value)}
@@ -1515,6 +1579,41 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         }
       </Typography>
       
+      {/* Required Fields Summary */}
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <Typography variant="body2">
+          <strong>Required Fields Summary:</strong> The following fields are mandatory and must be filled:
+        </Typography>
+        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Typography variant="body2">• Property Owner Name</Typography>
+          <Typography variant="body2">• Locality</Typography>
+          <Typography variant="body2">• Ward Number</Typography>
+          <Typography variant="body2">• Pincode</Typography>
+          <Typography variant="body2">• Zone</Typography>
+          <Typography variant="body2">• Property Type</Typography>
+          <Typography variant="body2">• Construction Type</Typography>
+          <Typography variant="body2">• Plot Area</Typography>
+          <Typography variant="body2">• Built-up Area</Typography>
+          <Typography variant="body2">• Carpet Area</Typography>
+        </Box>
+      </Alert>
+      
+      {/* Validation Errors Display */}
+      {validationErrors.length > 0 && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            <strong>Please fix the following errors:</strong>
+          </Typography>
+          <Box sx={{ mt: 1 }}>
+            {validationErrors.map((error, index) => (
+              <Typography key={index} variant="body2" sx={{ ml: 2 }}>
+                ❌ {error}
+              </Typography>
+            ))}
+          </Box>
+        </Alert>
+      )}
+
       {/* Edit Mode Alert */}
       {isEditMode && editingProperty && (
         <Alert severity="info" sx={{ mb: 3 }}>
