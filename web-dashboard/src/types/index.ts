@@ -88,9 +88,7 @@ export interface Property {
   owner_tenant_photo?: string | null;
   signature_data?: string | null;
   sketch_photo?: string | null; // File path (legacy support)
-  sketch_photo_base64?: string | null; // Base64 encoded image data
-  sketch_photo_size?: number | null; // File size in bytes
-  sketch_photo_type?: string | null; // MIME type (e.g., image/jpeg)
+  sketch_photo_base64?: Base64ImageData | null; // Base64 encoded image data with metadata
   sketch_photo_captured_at?: string | null;
   
   // Tax Assessment
