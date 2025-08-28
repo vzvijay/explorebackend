@@ -408,6 +408,7 @@ const PropertyDetailPage: React.FC = () => {
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                 <SketchPhotoDisplay
                   sketchPhotoPath={property.sketch_photo || null}
+                  sketchPhotoBase64={property.sketch_photo_base64 || null}
                   capturedAt={property.sketch_photo_captured_at || null}
                   surveyNumber={property.survey_number}
                   ownerName={property.owner_name}
