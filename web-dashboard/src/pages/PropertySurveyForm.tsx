@@ -1109,7 +1109,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     try {
       // Get API URL from environment or fallback
       const API_BASE_URL = getApiBaseUrl();
-      const saveUrl = `${API_BASE_URL}/properties/${propertyId}/sketch-photo`;
+              const saveUrl = `${API_BASE_URL}/sketch-photo/${propertyId}/base64`;
       
       console.log('🔄 Saving sketch photo base64 data to:', saveUrl);
       console.log('📁 Base64 details:', {
