@@ -21,7 +21,9 @@ const LoginPage: React.FC = () => {
     setError('');
     
     try {
-      await login({ email, password });
+      // Clean the email/username field - remove @ symbol if browser adds it automatically
+      const cleanEmail = email.startsWith('@') ? email.substring(1) : email;
+      await login({ email: cleanEmail, password });
     } catch (err) {
       setError('Invalid email or password');
     }
@@ -53,10 +55,11 @@ const LoginPage: React.FC = () => {
               required
               fullWidth
               id="email"
-              label="Email Address"
+              label="Email or Username"
               name="email"
               autoComplete="email"
               autoFocus
+              placeholder="Enter email or username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -81,18 +84,6 @@ const LoginPage: React.FC = () => {
             >
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
-            
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Demo Credentials:
-              </Typography>
-              <Typography variant="body2">
-                Admin: admin@maharashtra.gov.in
-              </Typography>
-              <Typography variant="body2">
-                Password: password123
-              </Typography>
-            </Box>
           </Box>
         </Paper>
       </Box>

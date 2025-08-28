@@ -89,8 +89,17 @@ interface FormData {
   rain_water_harvesting: boolean;
   latitude: string;
   longitude: string;
+  // New address fields from reverse geocoding
+  address: string;
+  street_address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  ward_number_from_gps: string;
+  area_from_gps: string;
   remarks: string;
   edit_comment?: string; // Comment required for post-submission edits
+  sketch_photo?: string; // Hand-drawn sketch photo path
 }
 
 interface PropertySurveyFormProps {
@@ -114,6 +123,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null);
+  const [sketchPhotoFile, setSketchPhotoFile] = useState<File | null>(null);
+  const [photoCapturing, setPhotoCapturing] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -150,11 +162,23 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     rain_water_harvesting: false,
     latitude: '',
     longitude: '',
+    // New address fields
+    address: '',
+    street_address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    ward_number_from_gps: '',
+    area_from_gps: '',
     remarks: '',
     edit_comment: ''
   });
 
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
+  const [geocodingLoading, setGeocodingLoading] = useState(false);
   const [propertyUse, setPropertyUse] = useState<PropertyUseDetails>({
     halls: [],
     bedrooms: [],
@@ -203,8 +227,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         rain_water_harvesting: editingProperty.rain_water_harvesting || false,
         latitude: editingProperty.latitude?.toString() || '',
         longitude: editingProperty.longitude?.toString() || '',
+        // New address fields
+        address: editingProperty.address || '',
+        street_address: editingProperty.street_address || '',
+        city: editingProperty.city || '',
+        state: editingProperty.state || '',
+        postal_code: editingProperty.postal_code || '',
+        ward_number_from_gps: editingProperty.ward_number_from_gps || '',
+        area_from_gps: editingProperty.area_from_gps || '',
         remarks: editingProperty.remarks || '',
-        edit_comment: ''
+        edit_comment: '',
+        sketch_photo: editingProperty.sketch_photo || ''
       });
 
       // Load property use details if available
@@ -217,9 +250,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         setSignatureData(editingProperty.signature_data);
       }
 
-      // Load photo if available
+      // Load owner photo if available
       if (editingProperty.owner_tenant_photo) {
         setCapturedPhoto(editingProperty.owner_tenant_photo);
+      }
+
+      // Load sketch photo if available
+      if (editingProperty.sketch_photo) {
+        setSketchPhoto(editingProperty.sketch_photo);
       }
 
       // Load location if available
@@ -232,12 +270,29 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   }, [isEditMode, editingProperty]);
 
+  // Initialize signature canvas when dialog opens
+  React.useEffect(() => {
+    if (signatureOpen) {
+      // Small delay to ensure canvas is rendered
+      const timer = setTimeout(() => {
+        initializeSignatureCanvas();
+        // Load existing signature if available
+        if (signatureData) {
+          loadExistingSignature();
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [signatureOpen, signatureData]);
+
   const steps = [
     'Basic Information',
     'Property Details & Permissions',
     'Area Measurements & Property Use',
     'Utilities & Connections', 
     'Location, Photos & Signature',
+    'Sketch Photo Capture',
     'Review & Submit'
   ];
 
@@ -264,32 +319,265 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Test GPS functionality (debug function)
+  const testGPSFunctionality = () => {
+    console.log('🔍 Testing GPS functionality...');
+    
+    if (!navigator.geolocation) {
+      console.error('❌ Geolocation not supported');
+      toast.error('Geolocation not supported by this browser');
+      return;
+    }
+    
+    console.log('✅ Geolocation API available');
+    console.log('📍 Testing basic location request...');
+    
+    // Simple location test
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('✅ GPS Test Success:', position);
+        toast.success('GPS test successful!');
+      },
+      (error) => {
+        console.error('❌ GPS Test Failed:', error);
+        console.error('Error Code:', error.code);
+        console.error('Error Message:', error.message);
+        
+        let detailedMessage = 'GPS test failed';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            detailedMessage = 'Location permission denied. Please allow location access.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            detailedMessage = 'Location unavailable. Check device location services.';
+            break;
+          case error.TIMEOUT:
+            detailedMessage = 'Location request timed out.';
+            break;
+          default:
+            detailedMessage = `GPS error: ${error.message}`;
+        }
+        
+        toast.error(detailedMessage);
+      },
+      {
+        enableHighAccuracy: false,  // Start with low accuracy for testing
+        timeout: 10000,            // 10 second timeout for testing
+        maximumAge: 300000         // Accept cached location up to 5 minutes
+      }
+    );
+  };
+
+  // Demo mode for testing (bypasses GPS issues)
+  const enableDemoMode = () => {
+    console.log('🎯 Enabling demo mode for testing...');
+    
+    // Set demo coordinates (Pune, Maharashtra)
+    const demoLat = 18.5204;
+    const demoLng = 73.8567;
+    
+    // Update form data
+    setFormData(prev => ({
+      ...prev,
+      latitude: demoLat.toString(),
+      longitude: demoLng.toString()
+    }));
+    
+    // Set location state
+    setLocation({ lat: demoLat, lng: demoLng });
+    
+    // Simulate address lookup
+    setCapturedAddress('Pune, Maharashtra, India');
+    
+    toast.success('Demo mode enabled! Testing with Pune coordinates.');
+    console.log('✅ Demo mode enabled with coordinates:', demoLat, demoLng);
+  };
+
   const getCurrentLocation = () => {
-    if (navigator.geolocation) {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationError(null);
+    setCapturedAddress(null);
+
+    // Try different accuracy modes for better compatibility
+    const tryLocationCapture = (highAccuracy: boolean) => {
+      const options = {
+        enableHighAccuracy: highAccuracy,  // Start with requested accuracy
+        timeout: highAccuracy ? 30000 : 15000,  // Shorter timeout for low accuracy
+        maximumAge: highAccuracy ? 60000 : 300000  // Accept older cached locations for low accuracy
+      };
+
+      console.log(`🔍 Trying location capture with ${highAccuracy ? 'high' : 'low'} accuracy...`);
+      
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          setLocation({ lat, lng });
-          setFormData(prev => ({
-            ...prev,
-            latitude: lat.toString(),
-            longitude: lng.toString()
-          }));
-          toast.success('Location captured successfully!');
+        async (position) => {
+          try {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            console.log('✅ Location captured successfully:', { lat, lng, accuracy });
+
+            // Update location state
+            setLocation({ lat, lng });
+            
+            // Update form data with coordinates
+            setFormData(prev => ({
+              ...prev,
+              latitude: lat.toString(),
+              longitude: lng.toString()
+            }));
+
+            const accuracyText = highAccuracy ? `±${Math.round(accuracy)}m` : '±100m-1km (network)';
+            toast.success(`Location captured! Accuracy: ${accuracyText}`);
+
+            // Step 2: Address Lookup using OpenStreetMap (FREE)
+            await lookupAddressFromCoordinates(lat, lng);
+
+          } catch (error) {
+            console.error('Error in location capture:', error);
+            setLocationError('Failed to process location data');
+            toast.error('Location captured but address lookup failed');
+          } finally {
+            setLocationLoading(false);
+          }
         },
         (error) => {
-          console.error('Error getting location:', error);
-          setFormData(prev => ({
-            ...prev,
-            latitude: '18.5204',
-            longitude: '73.8567'
-          }));
-          toast.info('Demo location set (Pune, Maharashtra)');
-        }
+          console.error('GPS Error:', error);
+          
+          if (highAccuracy && error.code === error.POSITION_UNAVAILABLE) {
+            console.log('🔄 High accuracy failed, trying low accuracy...');
+            // Try again with low accuracy
+            tryLocationCapture(false);
+            return;
+          }
+          
+          setLocationLoading(false);
+          
+          let errorMessage = 'Failed to capture location';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Location access denied. Please enable location services and try again.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'Location unavailable on this device. Try demo mode or manual entry.';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'Location request timed out. Please try again.';
+              break;
+            default:
+              errorMessage = 'Unknown location error occurred.';
+          }
+          
+          setLocationError(errorMessage);
+          toast.error(errorMessage);
+        },
+        options
       );
-    } else {
-      toast.error('Geolocation is not supported by this browser.');
+    };
+
+    // Start with high accuracy, fall back to low accuracy
+    tryLocationCapture(true);
+  };
+
+  // Manual coordinate entry with address lookup
+  const handleManualCoordinateEntry = async () => {
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      toast.error('Please enter valid coordinates');
+      return;
+    }
+    
+    if (lat < -90 || lat > 90) {
+      toast.error('Latitude must be between -90 and 90');
+      return;
+    }
+    
+    if (lng < -180 || lng > 180) {
+      toast.error('Longitude must be between -180 and 180');
+      return;
+    }
+    
+    // Set location state
+    setLocation({ lat, lng });
+    
+    // Look up address
+    await lookupAddressFromCoordinates(lat, lng);
+  };
+
+  // OpenStreetMap reverse geocoding (FREE)
+  const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
+    setGeocodingLoading(true);
+    
+    try {
+      // OpenStreetMap Nominatim API (FREE, no API key required)
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.display_name) {
+        // Parse address components
+        const address = data.display_name;
+        const addressParts = data.address;
+        
+        // Extract address components
+        const streetAddress = addressParts?.road ? 
+          (addressParts.house_number ? `${addressParts.house_number} ${addressParts.road}` : addressParts.road).trim() : '';
+        const city = addressParts?.city || addressParts?.town || addressParts?.village || '';
+        const state = addressParts?.state || '';
+        const postalCode = addressParts?.postcode || '';
+        const ward = addressParts?.['addr:city_district'] || addressParts?.suburb || '';
+        const area = addressParts?.neighbourhood || addressParts?.suburb || '';
+        
+        // Update form data with address information
+        setFormData(prev => ({
+          ...prev,
+          address: address,
+          street_address: streetAddress,
+          city: city,
+          state: state,
+          postal_code: postalCode,
+          ward_number_from_gps: ward,
+          area_from_gps: area
+        }));
+        
+        // Set captured address for display
+        setCapturedAddress(address);
+        
+        toast.success('Address detected successfully!');
+        
+        // Auto-fill some form fields if they're empty
+        if (!formData.locality && area) {
+          setFormData(prev => ({ ...prev, locality: area }));
+        }
+        if (!formData.city && city) {
+          setFormData(prev => ({ ...prev, city: city }));
+        }
+        if (!formData.pincode && postalCode) {
+          setFormData(prev => ({ ...prev, pincode: postalCode }));
+        }
+        
+      } else {
+        throw new Error('No address data received');
+      }
+      
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setLocationError('Address lookup failed. You can enter address manually.');
+      toast.warning('Address lookup failed. Please enter address manually.');
+    } finally {
+      setGeocodingLoading(false);
     }
   };
 
@@ -349,48 +637,245 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }));
   };
 
-  const capturePhoto = () => {
-    // In a real app, this would open the device camera
-    const canvas = document.createElement('canvas');
-    canvas.width = 300;
-    canvas.height = 200;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, 300, 200);
-      ctx.fillStyle = '#666';
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Demo Photo Captured', 150, 100);
-      ctx.fillText(new Date().toLocaleString(), 150, 120);
-      setCapturedPhoto(canvas.toDataURL());
-      setPhotoDialogOpen(false);
-      toast.success('Photo captured successfully!');
+  const capturePhoto = async () => {
+    try {
+      setPhotoCapturing(true);
+      // Show loading state
+      toast.info('Opening camera... Please wait.');
+      
+      // Try to access camera first
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: isMobileDevice() ? 'environment' : 'user', // Back camera on mobile, front on desktop
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        });
+        
+        // Create video element to capture from camera
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true; // Mute to avoid audio feedback
+        video.play();
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(true);
+        });
+        
+        // Show capture instruction
+        toast.info('Camera ready! Position the person in frame and click capture.');
+        
+        // Create canvas to capture the photo
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Draw video frame to canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Convert to data URL
+          const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          setCapturedPhoto(photoDataUrl);
+          
+          // Stop camera stream
+          stream.getTracks().forEach(track => track.stop());
+          
+          setPhotoDialogOpen(false);
+          toast.success('Photo captured successfully from camera!');
+        }
+      } else {
+        // Fallback: Open file input for photo selection
+        toast.info('Camera not supported. Opening file upload...');
+        openFileInput();
+      }
+    } catch (error) {
+      console.error('Camera access error:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          toast.error('Camera access denied. Please allow camera permissions or use file upload.');
+          // Fallback to file input
+          openFileInput();
+        } else if (error.name === 'NotFoundError') {
+          toast.error('No camera found. Please use file upload.');
+          // Fallback to file input
+          openFileInput();
+        } else if (error.name === 'NotReadableError') {
+          toast.error('Camera is busy. Please use file upload.');
+          // Fallback to file input
+          openFileInput();
+        } else {
+          toast.error('Camera error. Please use file upload.');
+          // Fallback to file input
+          openFileInput();
+        }
+      } else {
+        toast.error('Camera error. Please use file upload.');
+        // Fallback to file input
+        openFileInput();
+      }
+    } finally {
+      setPhotoCapturing(false);
     }
   };
 
+  // Fallback function to open file input
+  const openFileInput = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    // Use appropriate capture mode based on device
+    if (isMobileDevice()) {
+      input.capture = 'environment'; // Use back camera if available
+    }
+    
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error('File too large. Please select an image under 10MB.');
+          return;
+        }
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          toast.error('Please select a valid image file.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result as string;
+          setCapturedPhoto(result);
+          setPhotoDialogOpen(false);
+          toast.success('Photo uploaded successfully!');
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    
+    input.click();
+  };
+
+  // Function to clear captured photo
+  const clearCapturedPhoto = () => {
+    setCapturedPhoto(null);
+    toast.info('Photo cleared. Please capture a new photo.');
+  };
+
+  // Function to check camera support
+  const checkCameraSupport = () => {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  };
+
+  // Function to check if device is mobile
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
+  // Function to initialize signature canvas
+  const initializeSignatureCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Set initial canvas context properties
+        ctx.strokeStyle = '#000000'; // Black color
+        ctx.lineWidth = 3; // 3px line width
+        ctx.lineCap = 'round'; // Rounded line ends
+        ctx.lineJoin = 'round'; // Rounded line joins
+        ctx.globalAlpha = 1.0; // Full opacity
+        
+        // Clear any existing content
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        console.log('Signature canvas initialized with:', {
+          strokeStyle: ctx.strokeStyle,
+          lineWidth: ctx.lineWidth,
+          lineCap: ctx.lineCap,
+          lineJoin: ctx.lineJoin,
+          globalAlpha: ctx.globalAlpha
+        });
+      }
+    }
+  };
+
+  // Function to handle touch events smoothly
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault(); // Prevent default touch behaviors
+    startDrawing(e);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault(); // Prevent default touch behaviors
+    draw(e);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault(); // Prevent default touch behaviors
+    stopDrawing();
+  };
+
   // Signature Canvas Functions
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Configure canvas context for proper drawing
+        ctx.strokeStyle = '#000000'; // Black color
+        ctx.lineWidth = 3; // 3px line width
+        ctx.lineCap = 'round'; // Rounded line ends
+        ctx.lineJoin = 'round'; // Rounded line joins
+        ctx.globalAlpha = 1.0; // Full opacity
+        
         ctx.beginPath();
-        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        
+        // Handle both mouse and touch events
+        let clientX: number, clientY: number;
+        if ('touches' in e) {
+          // Touch event
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        } else {
+          // Mouse event
+          clientX = e.clientX;
+          clientY = e.clientY;
+        }
+        
+        ctx.moveTo(clientX - rect.left, clientY - rect.top);
       }
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+        // Handle both mouse and touch events
+        let clientX: number, clientY: number;
+        if ('touches' in e) {
+          // Touch event
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        } else {
+          // Mouse event
+          clientX = e.clientX;
+          clientY = e.clientY;
+        }
+        
+        ctx.lineTo(clientX - rect.left, clientY - rect.top);
         ctx.stroke();
       }
     }
@@ -409,7 +894,15 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Clear the entire canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Reset canvas context to default state
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = 1.0;
       }
     }
     setSignatureData('');
@@ -501,6 +994,28 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       }
     }
     
+    if (activeStep === 4) {
+      if (!formData.latitude || !formData.longitude) {
+        toast.error('Please capture GPS location before proceeding');
+        return;
+      }
+      if (!capturedPhoto) {
+        toast.error('Please capture owner/tenant photo before proceeding');
+        return;
+      }
+      if (!signatureData) {
+        toast.error('Please add digital signature before proceeding');
+        return;
+      }
+    }
+    
+    if (activeStep === 5) {
+      if (!sketchPhoto) {
+        toast.error('Please capture a sketch photo before proceeding');
+        return;
+      }
+    }
+    
     // Clear validation errors when moving to next step
     setValidationErrors([]);
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
@@ -540,6 +1055,39 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Upload sketch photo to backend
+  const uploadSketchPhoto = async (propertyId: string): Promise<string | null> => {
+    if (!sketchPhotoFile) {
+      return null;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('sketch_photo', sketchPhotoFile);
+
+      const response = await fetch(`http://localhost:3000/api/sketch-photo/${propertyId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to upload sketch photo');
+      }
+
+      const result = await response.json();
+      toast.success('Sketch photo uploaded successfully!');
+      return result.data.sketch_photo;
+    } catch (error: any) {
+      console.error('Error uploading sketch photo:', error);
+      toast.error(`Failed to upload sketch photo: ${error.message}`);
+      return null;
+    }
+  };
+
   const submitSurvey = async () => {
     setLoading(true);
     try {
@@ -553,8 +1101,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         return;
       }
 
-      // Clear validation errors when submission succeeds
-      setValidationErrors([]);
+      // Validate edit comment for post-submission edits (if this is an edit)
+      if (isEditMode && editingProperty && editingProperty.survey_status !== 'draft') {
+        if (!formData.edit_comment || formData.edit_comment.trim() === '') {
+          toast.error('Edit comment is required for post-submission edits');
+          setLoading(false);
+          return;
+        }
+      }
 
       const apiData = {
         ...formData,
@@ -580,6 +1134,31 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.updateProperty(editingProperty.id, apiData);
         toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
+        // Upload sketch photo if there's a new one
+        if (sketchPhotoFile) {
+          const uploadedPhotoPath = await uploadSketchPhoto(editingProperty.id);
+          if (uploadedPhotoPath) {
+            // Update the property with the new sketch photo path
+            await propertiesApi.updateProperty(editingProperty.id, {
+              sketch_photo: uploadedPhotoPath,
+              sketch_photo_captured_at: new Date().toISOString(),
+              edit_comment: formData.edit_comment // Include edit comment to pass validation
+            } as any); // Type assertion to bypass Property interface limitation
+          }
+        }
+        
+        // Submit the updated property for review (Always Editable System)
+        console.log('🔄 Attempting to submit property:', editingProperty.id);
+        try {
+          const submitResponse = await propertiesApi.submitProperty(editingProperty.id);
+          console.log('✅ Property submitted successfully:', submitResponse);
+          toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
+        } catch (submitError: any) {
+          console.error('❌ Error submitting property:', submitError);
+          toast.error(`Failed to submit survey: ${submitError.response?.data?.message || 'Unknown error'}`);
+          // Don't return here, let the edit complete
+        }
+        
         // Call callback if provided
         if (onEditComplete) {
           onEditComplete();
@@ -589,6 +1168,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.createProperty(apiData);
         
         if (response.data && response.data.property && response.data.property.id) {
+          // Upload sketch photo if there's one
+          if (sketchPhotoFile) {
+            const uploadedPhotoPath = await uploadSketchPhoto(response.data.property.id);
+            if (uploadedPhotoPath) {
+              // Update the property with the sketch photo path
+              await propertiesApi.updateProperty(response.data.property.id, {
+                sketch_photo: uploadedPhotoPath,
+                sketch_photo_captured_at: new Date().toISOString()
+              });
+            }
+          }
+          
           await propertiesApi.submitProperty(response.data.property.id);
           toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
         }
@@ -629,6 +1220,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           rain_water_harvesting: false,
           latitude: '',
           longitude: '',
+          // New address fields
+          address: '',
+          street_address: '',
+          city: '',
+          state: '',
+          postal_code: '',
+          ward_number_from_gps: '',
+          area_from_gps: '',
           remarks: '',
           edit_comment: ''
         });
@@ -641,6 +1240,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         });
         setSignatureData('');
         setCapturedPhoto(null);
+        setSketchPhoto(null);
+        setSketchPhotoFile(null);
+        setFormData(prev => ({ ...prev, sketch_photo: '' }));
         setActiveStep(0);
       }
     } catch (error: any) {
@@ -1275,47 +1877,189 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             <Grid item xs={12}>
               <Paper sx={{ p: 3, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
-                  📍 GPS Location
+                  📍 GPS Location & Address
                 </Typography>
                 
                 <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Latitude"
                       value={formData.latitude}
                       onChange={(e) => handleInputChange('latitude', e.target.value)}
                       placeholder="18.5204"
+                      disabled={locationLoading}
                     />
                   </Grid>
                   
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Longitude"
                       value={formData.longitude}
                       onChange={(e) => handleInputChange('longitude', e.target.value)}
                       placeholder="73.8567"
+                      disabled={locationLoading}
                     />
                   </Grid>
                   
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={6}>
                     <Button
                       variant="contained"
                       startIcon={<LocationOn />}
                       onClick={getCurrentLocation}
                       fullWidth
+                      disabled={locationLoading}
                     >
-                      Capture GPS
+                      {locationLoading ? (
+                        <>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Capturing...
+                        </>
+                      ) : (
+                        '📍 Capture GPS Location'
+                      )}
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<LocationOn />}
+                      onClick={handleManualCoordinateEntry}
+                      fullWidth
+                      disabled={geocodingLoading || !formData.latitude || !formData.longitude}
+                    >
+                      {geocodingLoading ? (
+                        <>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Looking up...
+                        </>
+                      ) : (
+                        '🔍 Lookup Address'
+                      )}
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={testGPSFunctionality}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🧪 Test GPS Functionality (Debug)
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="success"
+                      onClick={enableDemoMode}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🎯 Enable Demo Mode (Test with Pune Coordinates)
                     </Button>
                   </Grid>
                 </Grid>
                 
-                {location && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    Location captured: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                {/* Location Status */}
+                {locationLoading && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      📡 Acquiring GPS signal... Please wait (may take 30 seconds)
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Ensure you're outdoors with clear sky view for best accuracy
+                    </Typography>
                   </Alert>
                 )}
+                
+                {geocodingLoading && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      🔍 Looking up address from coordinates...
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {location && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>✅ GPS Location Captured Successfully!</strong>
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': { textDecoration: 'underline' }
+                      }}
+                      onClick={() => {
+                        const coords = `${location.lat.toFixed(6)}°N, ${location.lng.toFixed(6)}°E`;
+                        navigator.clipboard.writeText(coords);
+                        toast.success('Coordinates copied to clipboard!');
+                      }}
+                    >
+                      <strong>Coordinates:</strong> {location.lat.toFixed(6)}°N, {location.lng.toFixed(6)}°E
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Click coordinates to copy to clipboard
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Captured Address Display */}
+                {capturedAddress && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>🏠 Detected Address:</strong>
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                      {capturedAddress}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Address components have been auto-filled in the form above
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Error Display */}
+                {locationError && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>⚠️ Location Error:</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      {locationError}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      You can still enter coordinates and address manually
+                    </Typography>
+                  </Alert>
+                )}
+                
+                {/* Manual Entry Instructions */}
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    <strong>💡 Location Capture Instructions:</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Mobile Devices:</strong> Use built-in GPS for high accuracy (±3-10m)
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Desktop Browsers:</strong> Uses network location (less accurate)
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Manual Entry:</strong> You can always enter coordinates manually
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                    GPS works best outdoors with clear sky view. Address lookup uses free OpenStreetMap service.
+                  </Typography>
+                </Alert>
               </Paper>
             </Grid>
             
@@ -1330,12 +2074,13 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   <Grid item xs={12} sm={6}>
                     <Button
                       variant="outlined"
-                      startIcon={<PhotoCamera />}
+                      startIcon={photoCapturing ? <CircularProgress size={20} /> : <PhotoCamera />}
                       onClick={() => setPhotoDialogOpen(true)}
+                      disabled={photoCapturing}
                       fullWidth
                       sx={{ p: 3 }}
                     >
-                      {capturedPhoto ? 'Retake Photo' : 'Capture Photo'}
+                      {capturedPhoto ? '📸 Retake Owner Photo' : '📸 Capture Owner Photo'}
                     </Button>
                   </Grid>
                   
@@ -1350,10 +2095,31 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                         <Typography variant="caption" display="block">
                           Photo captured successfully
                         </Typography>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<Clear />}
+                          onClick={clearCapturedPhoto}
+                          sx={{ mt: 1 }}
+                        >
+                          Clear Photo
+                        </Button>
                       </Box>
                     </Grid>
                   )}
                 </Grid>
+                
+                {capturedPhoto && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>✅ Owner/Tenant Photo Captured Successfully!</strong>
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      The photo will be included in your survey submission. You can retake it anytime.
+                    </Typography>
+                  </Alert>
+                )}
               </Paper>
             </Grid>
             
@@ -1367,10 +2133,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 <Button
                   variant="outlined"
                   startIcon={<Edit />}
-                  onClick={() => setSignatureOpen(true)}
+                  onClick={openSignatureDialog}
                   sx={{ mb: 2 }}
                 >
-                  {signatureData ? 'Edit Signature' : 'Add Signature'}
+                  {signatureData ? '✍️ Edit Signature' : '✍️ Add Signature'}
                 </Button>
                 
                 {signatureData && (
@@ -1383,6 +2149,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     <Typography variant="caption" display="block">
                       Signature captured
                     </Typography>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      startIcon={<Clear />}
+                      onClick={clearSignature}
+                      sx={{ mt: 1 }}
+                    >
+                      Clear Signature
+                    </Button>
                   </Box>
                 )}
               </Paper>
@@ -1402,7 +2178,125 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           </Grid>
         );
 
-      case 5: // Review & Submit
+      case 5: // Sketch Photo Capture
+        return (
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                🎨 Sketch Photo Capture
+              </Typography>
+              
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Draw your hand-drawn sketch on paper, then capture it with your device camera. This sketch will be part of your survey documentation.
+              </Alert>
+            </Grid>
+            
+            {/* Sketch Photo Capture */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  📸 Hand-Drawn Sketch Photo
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ textAlign: 'center', p: 3, border: '2px dashed #ccc', borderRadius: 2 }}>
+                      <Typography variant="body1" gutterBottom>
+                        📝 Instructions:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        1. Draw your property sketch on paper
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        2. Include property boundaries, measurements
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        3. Take a clear photo of your sketch
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        4. Upload the photo below
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      {sketchPhoto ? (
+                        <Box>
+                          <img 
+                            src={sketchPhoto} 
+                            alt="Sketch Photo" 
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '300px', 
+                              border: '2px solid #4caf50',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
+                            ✅ Sketch photo captured successfully
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            color="secondary"
+                            onClick={() => {
+                              setSketchPhoto(null);
+                              setSketchPhotoFile(null);
+                            }}
+                            sx={{ mt: 1 }}
+                          >
+                            Remove Photo
+                          </Button>
+                        </Box>
+                      ) : (
+                        <Box>
+                          <input
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            id="sketch-photo-input"
+                            type="file"
+                            capture="environment"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleSketchPhotoCapture(file);
+                              }
+                            }}
+                          />
+                          <label htmlFor="sketch-photo-input">
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              component="span"
+                              startIcon={<PhotoCamera />}
+                              sx={{ p: 3, fontSize: '1.1rem' }}
+                              fullWidth
+                            >
+                              📸 Capture Sketch Photo
+                            </Button>
+                          </label>
+                          <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                            Tap to open camera or select from gallery
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+                
+                {sketchPhoto && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>Sketch Photo Ready!</strong> Your hand-drawn sketch has been captured and will be included in the survey.
+                    </Typography>
+                  </Alert>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        );
+
+      case 6: // Review & Submit
         return (
           <Grid container spacing={3}>
             <Grid item xs={12}>
@@ -1537,8 +2431,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                         <Typography>{formData.latitude ? '✅' : '⚠️'} GPS Location {!formData.latitude && '(Optional)'}</Typography>
                         <Typography>{capturedPhoto ? '✅' : '⚠️'} Owner Photo {!capturedPhoto && '(Optional)'}</Typography>
                         <Typography>{signatureData ? '✅' : '⚠️'} Digital Signature {!signatureData && '(Optional)'}</Typography>
+                        <Typography>{sketchPhoto ? '✅' : '⚠️'} Sketch Photo {!sketchPhoto && '(Required)'}</Typography>
                       </Box>
                     </Grid>
+                    
+                    {/* Sketch Photo Information */}
+                    {sketchPhoto && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'primary.main' }}>
+                          🎨 Sketch Photo Captured
+                        </Typography>
+                        <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <img 
+                            src={sketchPhoto} 
+                            alt="Sketch Photo" 
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '200px', 
+                              border: '1px solid #4caf50',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Typography variant="body2" sx={{ mt: 1, color: 'success.main' }}>
+                            ✅ Hand-drawn sketch photo ready for submission
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )}
                     
                     {/* Edit Comment Field for Post-Submission Edits */}
                     <Grid item xs={12}>
@@ -1563,6 +2482,2134 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       default:
         return 'Unknown step';
+    }
+  };
+
+  // Handle immediate sketch photo upload after capture
+  const handleSketchPhotoCapture = async (file: File) => {
+    setSketchPhotoFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSketchPhoto(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    // Show success message
+    toast.success('Sketch photo captured successfully! It will be uploaded when you submit the survey.');
+  };
+
+  // Function to open signature dialog and load existing signature if available
+  const openSignatureDialog = () => {
+    setSignatureOpen(true);
+  };
+
+  // Function to save signature and close dialog
+  const saveSignature = () => {
+    if (signatureData) {
+      setSignatureOpen(false);
+      toast.success('Signature saved successfully!');
+    } else {
+      toast.error('Please draw a signature before saving.');
+    }
+  };
+
+  // Function to clear signature from main form
+  const clearSignatureFromForm = () => {
+    clearSignature();
+    toast.info('Signature cleared. Please add a new signature.');
+  };
+
+  // Function to load existing signature into canvas
+  const loadExistingSignature = () => {
+    if (signatureData) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Clear canvas first
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Load existing signature image
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = signatureData;
+        }
+      }
+    }
+  };
+
+  // Function to test signature drawing (draws a simple test line)
+  const testSignatureDrawing = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Draw a test line to verify drawing is working
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = 1.0;
+        
+        ctx.beginPath();
+        ctx.moveTo(50, 100);
+        ctx.lineTo(350, 100);
+        ctx.stroke();
+        
+        toast.success('Test line drawn! Your signature drawing is working.');
+      }
+    }
+  };
+
+  // Function to adjust drawing settings
+  const adjustDrawingSettings = (setting: 'thicker' | 'thinner' | 'darker' | 'lighter') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        switch (setting) {
+          case 'thicker':
+            ctx.lineWidth = Math.min(ctx.lineWidth + 1, 8);
+            toast.info(`Line thickness: ${ctx.lineWidth}px`);
+            break;
+          case 'thinner':
+            ctx.lineWidth = Math.max(ctx.lineWidth - 1, 1);
+            toast.info(`Line thickness: ${ctx.lineWidth}px`);
+            break;
+          case 'darker':
+            ctx.globalAlpha = Math.min(ctx.globalAlpha + 0.1, 1.0);
+            toast.info(`Opacity: ${Math.round(ctx.globalAlpha * 100)}%`);
+            break;
+          case 'lighter':
+            ctx.globalAlpha = Math.max(ctx.globalAlpha - 0.1, 0.3);
+            toast.info(`Opacity: ${Math.round(ctx.globalAlpha * 100)}%`);
+            break;
+        }
+      }
+    }
+  };
+
+  // Function to reset drawing settings to default
+  const resetDrawingSettings = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = 1.0;
+        toast.info('Drawing settings reset to default');
+      }
+    }
+  };
+
+  // Function to undo last drawing action
+  const undoLastDrawing = () => {
+    // For now, we'll just clear and reload the existing signature
+    // In a more advanced implementation, we could store drawing history
+    if (signatureData) {
+      loadExistingSignature();
+      toast.info('Last action undone');
+    } else {
+      clearSignature();
+      toast.info('Canvas cleared');
+    }
+  };
+
+  // Function to handle zoom functionality
+  const handleZoom = (direction: 'in' | 'out') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const currentWidth = canvas.width;
+      const currentHeight = canvas.height;
+      
+      if (direction === 'in' && currentWidth < 800) {
+        canvas.width = currentWidth * 1.2;
+        canvas.height = currentHeight * 1.2;
+        toast.info(`Zoomed in: ${Math.round(canvas.width)}x${Math.round(canvas.height)}`);
+      } else if (direction === 'out' && currentWidth > 200) {
+        canvas.width = currentWidth / 1.2;
+        canvas.height = currentHeight / 1.2;
+        toast.info(`Zoomed out: ${Math.round(canvas.width)}x${Math.round(canvas.height)}`);
+      }
+      
+      // Reinitialize canvas after zoom
+      initializeSignatureCanvas();
+      if (signatureData) {
+        loadExistingSignature();
+      }
+    }
+  };
+
+  // Function to export signature in different formats
+  const exportSignature = (format: 'png' | 'jpeg' | 'svg') => {
+    const canvas = canvasRef.current;
+    if (canvas && signatureData) {
+      try {
+        let dataUrl: string;
+        let filename: string;
+        
+        switch (format) {
+          case 'png':
+            dataUrl = canvas.toDataURL('image/png');
+            filename = 'signature.png';
+            break;
+          case 'jpeg':
+            dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            filename = 'signature.jpg';
+            break;
+          case 'svg':
+            // For SVG, we'll create a simple SVG representation
+            const svgContent = `<svg width="${canvas.width}" height="${canvas.height}" xmlns="http://www.w3.org/2000/svg">
+              <rect width="100%" height="100%" fill="white"/>
+              <image href="${signatureData}" width="100%" height="100%"/>
+            </svg>`;
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+            dataUrl = svgUrl;
+            filename = 'signature.svg';
+            break;
+        }
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up SVG URL if created
+        if (format === 'svg') {
+          URL.revokeObjectURL(dataUrl);
+        }
+        
+        toast.success(`Signature exported as ${format.toUpperCase()}`);
+      } catch (error) {
+        console.error('Export error:', error);
+        toast.error('Failed to export signature');
+      }
+    } else {
+      toast.error('No signature to export');
+    }
+  };
+
+  // Function to import existing signature image
+  const importSignature = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error('File too large. Please select an image under 5MB.');
+          return;
+        }
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          toast.error('Please select a valid image file.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result as string;
+          setSignatureData(result);
+          
+          // Load the imported image into canvas
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              
+              const img = new Image();
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              };
+              img.src = result;
+            }
+          }
+          
+          toast.success('Signature imported successfully!');
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    
+    input.click();
+  };
+
+  // Function to show signature preview in different sizes
+  const showSignaturePreview = () => {
+    if (!signatureData) {
+      toast.error('No signature to preview');
+      return;
+    }
+    
+    // Create a preview dialog
+    const previewWindow = window.open('', '_blank', 'width=600,height=400');
+    if (previewWindow) {
+      previewWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Signature Preview</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+            .preview-container { margin: 20px 0; }
+            .preview-item { margin: 20px 0; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+            .preview-item h3 { margin: 0 0 10px 0; color: #333; }
+            img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+            .close-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .close-btn:hover { background: #0056b3; }
+          </style>
+        </head>
+        <body>
+          <h1>📝 Signature Preview</h1>
+          <p>Preview of your signature in different display sizes:</p>
+          
+          <div class="preview-container">
+            <div class="preview-item">
+              <h3>🖼️ Full Size (400x200)</h3>
+              <img src="${signatureData}" alt="Full Size Signature" width="400" height="200">
+            </div>
+            
+            <div class="preview-item">
+              <h3>📱 Medium Size (200x100)</h3>
+              <img src="${signatureData}" alt="Medium Size Signature" width="200" height="100">
+            </div>
+            
+            <div class="preview-item">
+              <h3>🔍 Small Size (100x50)</h3>
+              <img src="${signatureData}" alt="Small Size Signature" width="100" height="50">
+            </div>
+          </div>
+          
+          <button class="close-btn" onclick="window.close()">Close Preview</button>
+        </body>
+        </html>
+      `);
+      previewWindow.document.close();
+    } else {
+      toast.error('Popup blocked. Please allow popups for this site.');
+    }
+  };
+
+  // Function to reset canvas to default size
+  const resetCanvasSize = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      // Reset to default size
+      canvas.width = 400;
+      canvas.height = 200;
+      
+      // Reinitialize canvas
+      initializeSignatureCanvas();
+      
+      // Load existing signature if available
+      if (signatureData) {
+        loadExistingSignature();
+      }
+      
+      toast.info('Canvas reset to default size (400x200)');
+    }
+  };
+
+  // Function to show drawing statistics
+  const showDrawingStats = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const stats = {
+          canvasSize: `${canvas.width}x${canvas.width}`,
+          strokeStyle: ctx.strokeStyle,
+          lineWidth: `${ctx.lineWidth}px`,
+          lineCap: ctx.lineCap,
+          lineJoin: ctx.lineJoin,
+          globalAlpha: `${Math.round(ctx.globalAlpha * 100)}%`,
+          hasSignature: !!signatureData,
+          signatureSize: signatureData ? `${Math.round(signatureData.length / 1024)}KB` : 'N/A'
+        };
+        
+        const statsMessage = `📊 Drawing Statistics:
+• Canvas: ${stats.canvasSize}
+• Color: ${stats.strokeStyle}
+• Line Width: ${stats.lineWidth}
+• Line Cap: ${stats.lineCap}
+• Line Join: ${stats.lineJoin}
+• Opacity: ${stats.globalAlpha}
+• Has Signature: ${stats.hasSignature ? 'Yes' : 'No'}
+• Signature Size: ${stats.signatureSize}`;
+        
+        toast.info(statsMessage, {
+          autoClose: 5000,
+          position: 'top-center'
+        });
+      }
+    }
+  };
+
+  // Function to show help information
+  const showHelp = () => {
+    const helpMessage = `📚 Signature Drawing Help:
+
+🎨 Drawing:
+• Use mouse or touch to draw your signature
+• Draw slowly and deliberately for best results
+• Release to finish drawing
+
+⚙️ Controls:
+• Thinner/Thicker: Adjust line width
+• Lighter/Darker: Adjust opacity
+• Reset: Restore default settings
+
+🔍 Zoom:
+• Zoom In/Out: Adjust canvas size
+• Reset Size: Return to default dimensions
+
+📁 File Operations:
+• Import: Load existing signature image
+• Export: Save in PNG, JPEG, or SVG format
+• Preview: See signature in different sizes
+
+💡 Tips:
+• Good lighting helps with accuracy
+• Practice on paper first if needed
+• Use the Test Drawing button to verify functionality
+• Clear and redraw if not satisfied
+
+🆘 Troubleshooting:
+• If drawing isn't visible, check line width and opacity
+• If touch isn't working, ensure touch events are enabled
+• If import fails, check file size (max 5MB) and format`;
+    
+    toast.info(helpMessage, {
+      autoClose: 8000,
+      position: 'top-center'
+    });
+  };
+
+  // Function to toggle full screen mode for signature canvas
+  const toggleFullScreen = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      if (!document.fullscreenElement) {
+        // Enter full screen
+        if (canvas.requestFullscreen) {
+          canvas.requestFullscreen();
+          toast.info('Full screen mode activated. Press ESC to exit.');
+        } else if ((canvas as any).webkitRequestFullscreen) {
+          (canvas as any).webkitRequestFullscreen();
+          toast.info('Full screen mode activated. Press ESC to exit.');
+        } else if ((canvas as any).msRequestFullscreen) {
+          (canvas as any).msRequestFullscreen();
+          toast.info('Full screen mode activated. Press ESC to exit.');
+        }
+      } else {
+        // Exit full screen
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        } else if ((document as any).msExitFullscreen) {
+          (document as any).msExitFullscreen();
+        }
+        toast.info('Exited full screen mode');
+      }
+    }
+  };
+
+  // Function to change signature color
+  const changeSignatureColor = (color: string) => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.strokeStyle = color;
+        toast.info(`Signature color changed to ${color}`);
+      }
+    }
+  };
+
+  // Function to change signature style
+  const changeSignatureStyle = (style: 'normal' | 'bold' | 'thin' | 'calligraphy') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        switch (style) {
+          case 'normal':
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Signature style: Normal');
+            break;
+          case 'bold':
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Signature style: Bold');
+            break;
+          case 'thin':
+            ctx.lineWidth = 1;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Signature style: Thin');
+            break;
+          case 'calligraphy':
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Signature style: Calligraphy');
+            break;
+        }
+      }
+    }
+  };
+
+  // Function to change signature background
+  const changeSignatureBackground = (background: 'white' | 'light' | 'dark' | 'transparent') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current drawing
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        switch (background) {
+          case 'white':
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            toast.info('Background: White');
+            break;
+          case 'light':
+            ctx.fillStyle = '#f5f5f5';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            toast.info('Background: Light Gray');
+            break;
+          case 'dark':
+            ctx.fillStyle = '#2c2c2c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            toast.info('Background: Dark Gray');
+            break;
+          case 'transparent':
+            // No background fill
+            toast.info('Background: Transparent');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature paper size
+  const changePaperSize = (size: 'small' | 'medium' | 'large' | 'custom') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      // Save current signature
+      const currentSignature = signatureData;
+      
+      // Set new dimensions
+      switch (size) {
+        case 'small':
+          canvas.width = 300;
+          canvas.height = 150;
+          toast.info('Paper size: Small (300x150)');
+          break;
+        case 'medium':
+          canvas.width = 400;
+          canvas.height = 200;
+          toast.info('Paper size: Medium (400x200)');
+          break;
+        case 'large':
+          canvas.width = 600;
+          canvas.height = 300;
+          toast.info('Paper size: Large (600x300)');
+          break;
+        case 'custom':
+          // For custom size, we'll use a prompt (simplified)
+          const width = prompt('Enter width (100-800):', '400');
+          const height = prompt('Enter height (50-600):', '200');
+          if (width && height) {
+            const w = parseInt(width);
+            const h = parseInt(height);
+            if (w >= 100 && w <= 800 && h >= 50 && h <= 600) {
+              canvas.width = w;
+              canvas.height = h;
+              toast.info(`Paper size: Custom (${w}x${h})`);
+            } else {
+              toast.error('Invalid dimensions. Using medium size.');
+              canvas.width = 400;
+              canvas.height = 200;
+            }
+          }
+          break;
+      }
+      
+      // Reinitialize canvas
+      initializeSignatureCanvas();
+      
+      // Restore signature if exists
+      if (currentSignature) {
+        loadExistingSignature();
+      }
+    }
+  };
+
+  // Function to change signature orientation
+  const changeSignatureOrientation = (orientation: 'landscape' | 'portrait' | 'square') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      // Save current signature
+      const currentSignature = signatureData;
+      
+      // Set new dimensions based on orientation
+      switch (orientation) {
+        case 'landscape':
+          canvas.width = 500;
+          canvas.height = 250;
+          toast.info('Orientation: Landscape (500x250)');
+          break;
+        case 'portrait':
+          canvas.width = 300;
+          canvas.height = 400;
+          toast.info('Orientation: Portrait (300x400)');
+          break;
+        case 'square':
+          canvas.width = 400;
+          canvas.height = 400;
+          toast.info('Orientation: Square (400x400)');
+          break;
+      }
+      
+      // Reinitialize canvas
+      initializeSignatureCanvas();
+      
+      // Restore signature if exists
+      if (currentSignature) {
+        loadExistingSignature();
+      }
+    }
+  };
+
+  // Function to change signature paper type
+  const changePaperType = (type: 'plain' | 'lined' | 'grid' | 'dotted') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw paper pattern based on type
+        switch (type) {
+          case 'plain':
+            // No pattern
+            toast.info('Paper type: Plain');
+            break;
+          case 'lined':
+            // Draw horizontal lines
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            for (let y = 20; y < canvas.height; y += 20) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Paper type: Lined');
+            break;
+          case 'grid':
+            // Draw grid pattern
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 20) {
+              ctx.beginPath();
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, canvas.height);
+              ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 20) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Paper type: Grid');
+            break;
+          case 'dotted':
+            // Draw dotted pattern
+            ctx.fillStyle = '#e0e0e0';
+            for (let x = 10; x < canvas.width; x += 20) {
+              for (let y = 10; y < canvas.height; y += 20) {
+                ctx.beginPath();
+                ctx.arc(x, y, 1, 0, 2 * Math.PI);
+                ctx.fill();
+              }
+            }
+            toast.info('Paper type: Dotted');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature margins
+  const changeSignatureMargins = (margin: 'none' | 'small' | 'medium' | 'large') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw margins based on type
+        switch (margin) {
+          case 'none':
+            // No margins
+            toast.info('Margins: None');
+            break;
+          case 'small':
+            // Small margins (10px)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+            toast.info('Margins: Small (10px)');
+            break;
+          case 'medium':
+            // Medium margins (20px)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+            toast.info('Margins: Medium (20px)');
+            break;
+          case 'large':
+            // Large margins (30px)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
+            toast.info('Margins: Large (30px)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature watermark
+  const changeSignatureWatermark = (watermark: 'none' | 'draft' | 'confidential' | 'approved' | 'custom') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw watermark based on type
+        switch (watermark) {
+          case 'none':
+            // No watermark
+            toast.info('Watermark: None');
+            break;
+          case 'draft':
+            // Draft watermark
+            ctx.fillStyle = '#f0f0f0';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('DRAFT', canvas.width / 2, canvas.height / 2);
+            toast.info('Watermark: Draft');
+            break;
+          case 'confidential':
+            // Confidential watermark
+            ctx.fillStyle = '#f0f0f0';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('CONFIDENTIAL', canvas.width / 2, canvas.height / 2);
+            toast.info('Watermark: Confidential');
+            break;
+          case 'approved':
+            // Approved watermark
+            ctx.fillStyle = '#e8f5e8';
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('APPROVED', canvas.width / 2, canvas.height / 2);
+            toast.info('Watermark: Approved');
+            break;
+          case 'custom':
+            // Custom watermark
+            const customText = prompt('Enter custom watermark text:', 'CUSTOM');
+            if (customText) {
+              ctx.fillStyle = '#f0f0f0';
+              ctx.font = 'bold 20px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText(customText.toUpperCase(), canvas.width / 2, canvas.height / 2);
+              toast.info(`Watermark: ${customText}`);
+            }
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature border style
+  const changeSignatureBorder = (border: 'none' | 'solid' | 'dashed' | 'dotted' | 'double') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw border based on type
+        switch (border) {
+          case 'none':
+            // No border
+            toast.info('Border: None');
+            break;
+          case 'solid':
+            // Solid border
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            toast.info('Border: Solid');
+            break;
+          case 'dashed':
+            // Dashed border
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            ctx.setLineDash([]); // Reset line dash
+            toast.info('Border: Dashed');
+            break;
+          case 'dotted':
+            // Dotted border
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([2, 2]);
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            ctx.setLineDash([]); // Reset line dash
+            toast.info('Border: Dotted');
+            break;
+          case 'double':
+            // Double border
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            toast.info('Border: Double');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature corner style
+  const changeSignatureCorner = (corner: 'square' | 'rounded' | 'beveled' | 'decorative') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw corner style based on type
+        switch (corner) {
+          case 'square':
+            // Square corners (default)
+            toast.info('Corner style: Square');
+            break;
+          case 'rounded':
+            // Rounded corners
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, canvas.width, canvas.height, 10);
+            ctx.stroke();
+            toast.info('Corner style: Rounded');
+            break;
+          case 'beveled':
+            // Beveled corners
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(canvas.width - 10, 0);
+            ctx.lineTo(canvas.width, 10);
+            ctx.lineTo(canvas.width, canvas.height - 10);
+            ctx.lineTo(canvas.width - 10, canvas.height);
+            ctx.lineTo(10, canvas.height);
+            ctx.lineTo(0, canvas.height - 10);
+            ctx.lineTo(0, 10);
+            ctx.closePath();
+            ctx.stroke();
+            toast.info('Corner style: Beveled');
+            break;
+          case 'decorative':
+            // Decorative corners
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            // Draw decorative corner elements
+            const cornerSize = 15;
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(cornerSize, 0);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(0, cornerSize);
+            ctx.stroke();
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - cornerSize, 0);
+            ctx.lineTo(canvas.width, 0);
+            ctx.lineTo(canvas.width, cornerSize);
+            ctx.stroke();
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(canvas.width, canvas.height - cornerSize);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(canvas.width - cornerSize, canvas.height);
+            ctx.stroke();
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(cornerSize, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.lineTo(0, canvas.height - cornerSize);
+            ctx.stroke();
+            toast.info('Corner style: Decorative');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature shadow style
+  const changeSignatureShadow = (shadow: 'none' | 'light' | 'medium' | 'heavy' | 'colored') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw shadow based on type
+        switch (shadow) {
+          case 'none':
+            // No shadow
+            toast.info('Shadow: None');
+            break;
+          case 'light':
+            // Light shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            toast.info('Shadow: Light');
+            break;
+          case 'medium':
+            // Medium shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+            toast.info('Shadow: Medium');
+            break;
+          case 'heavy':
+            // Heavy shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            ctx.shadowBlur = 15;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+            toast.info('Shadow: Heavy');
+            break;
+          case 'colored':
+            // Colored shadow
+            ctx.shadowColor = 'rgba(0, 100, 255, 0.3)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetX = 4;
+            ctx.shadowOffsetY = 4;
+            toast.info('Shadow: Colored (Blue)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset shadow for future drawing
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+    }
+  };
+
+  // Function to change signature texture style
+  const changeSignatureTexture = (texture: 'none' | 'paper' | 'canvas' | 'leather' | 'metal') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw texture based on type
+        switch (texture) {
+          case 'none':
+            // No texture
+            toast.info('Texture: None');
+            break;
+          case 'paper':
+            // Paper texture (subtle noise)
+            for (let i = 0; i < 1000; i++) {
+              const x = Math.random() * canvas.width;
+              const y = Math.random() * canvas.height;
+              const alpha = Math.random() * 0.1;
+              ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+              ctx.fillRect(x, y, 1, 1);
+            }
+            toast.info('Texture: Paper');
+            break;
+          case 'canvas':
+            // Canvas texture (woven pattern)
+            ctx.strokeStyle = '#f0f0f0';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 4) {
+              ctx.beginPath();
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, canvas.height);
+              ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 4) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Texture: Canvas');
+            break;
+          case 'leather':
+            // Leather texture (irregular pattern)
+            for (let i = 0; i < 500; i++) {
+              const x = Math.random() * canvas.width;
+              const y = Math.random() * canvas.height;
+              const size = Math.random() * 3 + 1;
+              const alpha = Math.random() * 0.15;
+              ctx.fillStyle = `rgba(139, 69, 19, ${alpha})`;
+              ctx.beginPath();
+              ctx.arc(x, y, size, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+            toast.info('Texture: Leather');
+            break;
+          case 'metal':
+            // Metal texture (metallic shine)
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#e0e0e0');
+            gradient.addColorStop(0.5, '#ffffff');
+            gradient.addColorStop(1, '#c0c0c0');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add metallic highlights
+            for (let i = 0; i < 200; i++) {
+              const x = Math.random() * canvas.width;
+              const y = Math.random() * canvas.height;
+              const alpha = Math.random() * 0.3;
+              ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+              ctx.fillRect(x, y, 2, 2);
+            }
+            toast.info('Texture: Metal');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature filter style
+  const changeSignatureFilter = (filter: 'none' | 'sepia' | 'grayscale' | 'invert' | 'blur') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply filter based on type
+        switch (filter) {
+          case 'none':
+            // No filter
+            toast.info('Filter: None');
+            break;
+          case 'sepia':
+            // Sepia filter
+            ctx.filter = 'sepia(100%)';
+            toast.info('Filter: Sepia');
+            break;
+          case 'grayscale':
+            // Grayscale filter
+            ctx.filter = 'grayscale(100%)';
+            toast.info('Filter: Grayscale');
+            break;
+          case 'invert':
+            // Invert filter
+            ctx.filter = 'invert(100%)';
+            toast.info('Filter: Invert');
+            break;
+          case 'blur':
+            // Blur filter
+            ctx.filter = 'blur(1px)';
+            toast.info('Filter: Blur');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset filter for future drawing
+        ctx.filter = 'none';
+      }
+    }
+  };
+
+  // Function to change signature effect style
+  const changeSignatureEffect = (effect: 'none' | 'glow' | 'neon' | 'emboss' | 'outline') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply effect based on type
+        switch (effect) {
+          case 'none':
+            // No effect
+            toast.info('Effect: None');
+            break;
+          case 'glow':
+            // Glow effect
+            ctx.shadowColor = '#00ff00';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            toast.info('Effect: Glow (Green)');
+            break;
+          case 'neon':
+            // Neon effect
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            toast.info('Effect: Neon (Pink)');
+            break;
+          case 'emboss':
+            // Emboss effect
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 1;
+            toast.info('Effect: Emboss');
+            break;
+          case 'outline':
+            // Outline effect
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Effect: Outline');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset effects for future drawing
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+      }
+    }
+  };
+
+  // Function to change signature animation style
+  const changeSignatureAnimation = (animation: 'none' | 'fade' | 'slide' | 'bounce' | 'rotate') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply animation based on type
+        switch (animation) {
+          case 'none':
+            // No animation
+            toast.info('Animation: None');
+            break;
+          case 'fade':
+            // Fade animation
+            ctx.globalAlpha = 0.5;
+            toast.info('Animation: Fade (50% opacity)');
+            break;
+          case 'slide':
+            // Slide animation (offset)
+            ctx.translate(20, 0);
+            toast.info('Animation: Slide (20px right)');
+            break;
+          case 'bounce':
+            // Bounce animation (scale)
+            ctx.scale(1.1, 1.1);
+            toast.info('Animation: Bounce (110% scale)');
+            break;
+          case 'rotate':
+            // Rotate animation
+            ctx.rotate(0.1); // Small rotation
+            toast.info('Animation: Rotate (5.7 degrees)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset transformations for future drawing
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+  };
+
+  // Function to change signature theme style
+  const changeSignatureTheme = (theme: 'classic' | 'modern' | 'vintage' | 'futuristic' | 'nature') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply theme based on type
+        switch (theme) {
+          case 'classic':
+            // Classic theme (black on white)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            toast.info('Theme: Classic (Black on White)');
+            break;
+          case 'modern':
+            // Modern theme (blue on light blue)
+            ctx.fillStyle = '#e3f2fd';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 4;
+            toast.info('Theme: Modern (Blue on Light Blue)');
+            break;
+          case 'vintage':
+            // Vintage theme (brown on cream)
+            ctx.fillStyle = '#f5f5dc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 3;
+            toast.info('Theme: Vintage (Brown on Cream)');
+            break;
+          case 'futuristic':
+            // Futuristic theme (cyan on dark)
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 5;
+            toast.info('Theme: Futuristic (Cyan on Dark)');
+            break;
+          case 'nature':
+            // Nature theme (green on light green)
+            ctx.fillStyle = '#e8f5e8';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#2e7d32';
+            ctx.lineWidth = 3;
+            toast.info('Theme: Nature (Green on Light Green)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature quality style
+  const changeSignatureQuality = (quality: 'low' | 'medium' | 'high' | 'ultra' | 'custom') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply quality based on type
+        switch (quality) {
+          case 'low':
+            // Low quality (rough edges)
+            ctx.lineCap = 'butt';
+            ctx.lineJoin = 'miter';
+            ctx.lineWidth = 2;
+            toast.info('Quality: Low (Rough edges)');
+            break;
+          case 'medium':
+            // Medium quality (standard)
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 3;
+            toast.info('Quality: Medium (Standard)');
+            break;
+          case 'high':
+            // High quality (smooth)
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 3;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            toast.info('Quality: High (Smooth)');
+            break;
+          case 'ultra':
+            // Ultra quality (premium)
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 3;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            // Enable anti-aliasing
+            ctx.globalCompositeOperation = 'source-over';
+            toast.info('Quality: Ultra (Premium)');
+            break;
+          case 'custom':
+            // Custom quality
+            const customWidth = prompt('Enter line width (1-10):', '3');
+            const customCap = prompt('Enter line cap (butt, round, square):', 'round');
+            const customJoin = prompt('Enter line join (miter, round, bevel):', 'round');
+            
+            if (customWidth && customCap && customJoin) {
+              const width = parseInt(customWidth);
+              if (width >= 1 && width <= 10) {
+                ctx.lineWidth = width;
+                ctx.lineCap = customCap as CanvasLineCap;
+                ctx.lineJoin = customJoin as CanvasLineJoin;
+                toast.info(`Quality: Custom (Width: ${width}, Cap: ${customCap}, Join: ${customJoin})`);
+              } else {
+                toast.error('Invalid line width. Using medium quality.');
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+              }
+            }
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature export style
+  const changeSignatureExportStyle = (style: 'standard' | 'premium' | 'print' | 'web' | 'mobile') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply export style based on type
+        switch (style) {
+          case 'standard':
+            // Standard export (default settings)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Export Style: Standard (Default)');
+            break;
+          case 'premium':
+            // Premium export (high quality)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            toast.info('Export Style: Premium (High Quality)');
+            break;
+          case 'print':
+            // Print export (optimized for printing)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Higher resolution for print
+            canvas.width = canvas.width * 2;
+            canvas.height = canvas.height * 2;
+            ctx.scale(2, 2);
+            toast.info('Export Style: Print (High Resolution)');
+            break;
+          case 'web':
+            // Web export (optimized for web)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Web-optimized settings
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'medium';
+            toast.info('Export Style: Web (Optimized)');
+            break;
+          case 'mobile':
+            // Mobile export (optimized for mobile)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Mobile-optimized settings
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'low';
+            toast.info('Export Style: Mobile (Touch Optimized)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature preset style
+  const changeSignaturePreset = (preset: 'business' | 'creative' | 'formal' | 'casual' | 'artistic') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply preset based on type
+        switch (preset) {
+          case 'business':
+            // Business preset (professional)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add business watermark
+            ctx.fillStyle = '#f0f0f0';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('BUSINESS', canvas.width / 2, canvas.height - 10);
+            toast.info('Preset: Business (Professional)');
+            break;
+          case 'creative':
+            // Creative preset (artistic)
+            ctx.fillStyle = '#f8f8ff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add creative watermark
+            ctx.fillStyle = '#ff6b6b';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('CREATIVE', canvas.width / 2, canvas.height - 10);
+            toast.info('Preset: Creative (Artistic)');
+            break;
+          case 'formal':
+            // Formal preset (elegant)
+            ctx.fillStyle = '#fafafa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add formal watermark
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('FORMAL', canvas.width / 2, canvas.height - 10);
+            toast.info('Preset: Formal (Elegant)');
+            break;
+          case 'casual':
+            // Casual preset (friendly)
+            ctx.fillStyle = '#fff8dc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#32cd32';
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add casual watermark
+            ctx.fillStyle = '#32cd32';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('CASUAL', canvas.width / 2, canvas.height - 10);
+            toast.info('Preset: Casual (Friendly)');
+            break;
+          case 'artistic':
+            // Artistic preset (creative)
+            ctx.fillStyle = '#ffe4e1';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#9370db';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add artistic watermark
+            ctx.fillStyle = '#9370db';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('ARTISTIC', canvas.width / 2, canvas.height - 10);
+            toast.info('Preset: Artistic (Creative)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature template style
+  const changeSignatureTemplate = (template: 'blank' | 'lined' | 'grid' | 'dotted' | 'ruled') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply template based on type
+        switch (template) {
+          case 'blank':
+            // Blank template (no lines)
+            toast.info('Template: Blank (No lines)');
+            break;
+          case 'lined':
+            // Lined template (horizontal lines)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            for (let y = 20; y < canvas.height; y += 20) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Template: Lined (Horizontal lines)');
+            break;
+          case 'grid':
+            // Grid template (both horizontal and vertical lines)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 20) {
+              ctx.beginPath();
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, canvas.height);
+              ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 20) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Template: Grid (Both directions)');
+            break;
+          case 'dotted':
+            // Dotted template (dotted pattern)
+            ctx.fillStyle = '#e0e0e0';
+            for (let x = 10; x < canvas.width; x += 20) {
+              for (let y = 10; y < canvas.height; y += 20) {
+                ctx.beginPath();
+                ctx.arc(x, y, 1, 0, 2 * Math.PI);
+                ctx.fill();
+              }
+            }
+            toast.info('Template: Dotted (Dotted pattern)');
+            break;
+          case 'ruled':
+            // Ruled template (ruled paper style)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            // Top margin line
+            ctx.beginPath();
+            ctx.moveTo(0, 30);
+            ctx.lineTo(canvas.width, 30);
+            ctx.stroke();
+            // Left margin line
+            ctx.beginPath();
+            ctx.moveTo(30, 0);
+            ctx.lineTo(30, canvas.height);
+            ctx.stroke();
+            // Horizontal lines
+            for (let y = 50; y < canvas.height; y += 20) {
+              ctx.beginPath();
+              ctx.moveTo(30, y);
+              ctx.lineTo(canvas.width, y);
+              ctx.stroke();
+            }
+            toast.info('Template: Ruled (Paper style)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature layout style
+  const changeSignatureLayout = (layout: 'center' | 'left' | 'right' | 'top' | 'bottom') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply layout based on type
+        switch (layout) {
+          case 'center':
+            // Center layout (default)
+            toast.info('Layout: Center (Default)');
+            break;
+          case 'left':
+            // Left layout (left-aligned)
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, 50, canvas.height);
+            toast.info('Layout: Left (Left-aligned)');
+            break;
+          case 'right':
+            // Right layout (right-aligned)
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(canvas.width - 50, 0, 50, canvas.height);
+            toast.info('Layout: Right (Right-aligned)');
+            break;
+          case 'top':
+            // Top layout (top-aligned)
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, 50);
+            toast.info('Layout: Top (Top-aligned)');
+            break;
+          case 'bottom':
+            // Bottom layout (bottom-aligned)
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+            toast.info('Layout: Bottom (Bottom-aligned)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+      }
+    }
+  };
+
+  // Function to change signature style combination
+  const changeSignatureStyleCombination = (combination: 'classic' | 'modern' | 'vintage' | 'futuristic' | 'nature') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply style combination based on type
+        switch (combination) {
+          case 'classic':
+            // Classic combination (black on white with subtle borders)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add subtle border
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            toast.info('Style Combination: Classic (Black on White with Border)');
+            break;
+          case 'modern':
+            // Modern combination (blue on light blue with rounded corners)
+            ctx.fillStyle = '#e3f2fd';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add rounded corners effect
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 15);
+            ctx.stroke();
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 4;
+            toast.info('Style Combination: Modern (Blue with Rounded Corners)');
+            break;
+          case 'vintage':
+            // Vintage combination (brown on cream with aged effect)
+            ctx.fillStyle = '#f5f5dc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add aged effect
+            ctx.fillStyle = 'rgba(139, 69, 19, 0.1)';
+            for (let i = 0; i < 100; i++) {
+              const x = Math.random() * canvas.width;
+              const y = Math.random() * canvas.height;
+              ctx.fillRect(x, y, 2, 2);
+            }
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 3;
+            toast.info('Style Combination: Vintage (Brown with Aged Effect)');
+            break;
+          case 'futuristic':
+            // Futuristic combination (cyan on dark with glow effect)
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add glow effect
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            toast.info('Style Combination: Futuristic (Cyan with Glow)');
+            break;
+          case 'nature':
+            // Nature combination (green on light green with organic pattern)
+            ctx.fillStyle = '#e8f5e8';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#2e7d32';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add organic pattern
+            ctx.fillStyle = 'rgba(46, 125, 50, 0.1)';
+            for (let i = 0; i < 50; i++) {
+              const x = Math.random() * canvas.width;
+              const y = Math.random() * canvas.height;
+              const size = Math.random() * 4 + 1;
+              ctx.beginPath();
+              ctx.arc(x, y, size, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+            ctx.strokeStyle = '#2e7d32';
+            ctx.lineWidth = 3;
+            toast.info('Style Combination: Nature (Green with Organic Pattern)');
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset effects for future drawing
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+    }
+  };
+
+  // Function to change signature final style
+  const changeSignatureFinalStyle = (style: 'clean' | 'decorative' | 'minimal' | 'elaborate' | 'custom') => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Save current signature
+        const currentSignature = signatureData;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply final style based on type
+        switch (style) {
+          case 'clean':
+            // Clean style (minimal, professional)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            toast.info('Final Style: Clean (Minimal, Professional)');
+            break;
+          case 'decorative':
+            // Decorative style (ornate, artistic)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add decorative elements
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 1;
+            // Draw decorative border
+            for (let i = 0; i < 4; i++) {
+              ctx.strokeRect(10 + i * 5, 10 + i * 5, canvas.width - 20 - i * 10, canvas.height - 20 - i * 10);
+            }
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            toast.info('Final Style: Decorative (Ornate, Artistic)');
+            break;
+          case 'minimal':
+            // Minimal style (simple, elegant)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add minimal accent
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            toast.info('Final Style: Minimal (Simple, Elegant)');
+            break;
+          case 'elaborate':
+            // Elaborate style (detailed, complex)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // Add elaborate elements
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 1;
+            // Draw corner decorations
+            const cornerSize = 20;
+            for (let i = 0; i < 4; i++) {
+              const x = i < 2 ? 0 : canvas.width;
+              const y = i % 2 === 0 ? 0 : canvas.height;
+              ctx.beginPath();
+              ctx.moveTo(x, y);
+              ctx.lineTo(x + (i < 2 ? cornerSize : -cornerSize), y);
+              ctx.lineTo(x + (i < 2 ? cornerSize : -cornerSize), y + (i % 2 === 0 ? cornerSize : -cornerSize));
+              ctx.stroke();
+            }
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            toast.info('Final Style: Elaborate (Detailed, Complex)');
+            break;
+          case 'custom':
+            // Custom style (user-defined)
+            const customColor = prompt('Enter custom color (hex):', '#000000');
+            const customWidth = prompt('Enter custom line width (1-10):', '3');
+            const customStyle = prompt('Enter custom style (solid, dashed, dotted):', 'solid');
+            
+            if (customColor && customWidth && customStyle) {
+              const width = parseInt(customWidth);
+              if (width >= 1 && width <= 10) {
+                ctx.strokeStyle = customColor;
+                ctx.lineWidth = width;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                // Apply custom line style
+                switch (customStyle) {
+                  case 'dashed':
+                    ctx.setLineDash([10, 5]);
+                    break;
+                  case 'dotted':
+                    ctx.setLineDash([2, 2]);
+                    break;
+                  default:
+                    ctx.setLineDash([]);
+                }
+                
+                toast.info(`Final Style: Custom (Color: ${customColor}, Width: ${width}, Style: ${customStyle})`);
+              } else {
+                toast.error('Invalid line width. Using clean style.');
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+              }
+            }
+            break;
+        }
+        
+        // Restore signature if exists
+        if (currentSignature) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = currentSignature;
+        }
+        
+        // Reset line dash for future drawing
+        ctx.setLineDash([]);
+      }
     }
   };
 
@@ -1681,21 +4728,111 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       </Stepper>
 
       {/* Photo Capture Dialog */}
-      <Dialog open={photoDialogOpen} onClose={() => setPhotoDialogOpen(false)}>
+      <Dialog open={photoDialogOpen} onClose={() => setPhotoDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Capture Owner/Tenant Photo</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            In a real application, this would activate your device camera to capture a photo of the property owner or tenant.
+            📸 This will open your device camera to capture a photo of the property owner or tenant.
+            <br />
+            💡 <strong>Tip:</strong> Use good lighting and ensure the person's face is clearly visible.
+            {!checkCameraSupport() && (
+              <>
+                <br />
+                ⚠️ <strong>Note:</strong> Your browser doesn't support camera access. Use file upload instead.
+              </>
+            )}
+            {isMobileDevice() && (
+              <>
+                <br />
+                📱 <strong>Mobile:</strong> Camera will open in your device's native camera app.
+              </>
+            )}
           </Alert>
-          <Button
-            variant="contained"
-            startIcon={<PhotoCamera />}
-            onClick={capturePhoto}
-            fullWidth
-            sx={{ p: 2 }}
-          >
-            Capture Photo
-          </Button>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!capturedPhoto ? (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={photoCapturing ? <CircularProgress size={20} /> : <PhotoCamera />}
+                  onClick={capturePhoto}
+                  disabled={photoCapturing}
+                  fullWidth
+                  sx={{ p: 2, fontSize: '1.1rem' }}
+                >
+                  {photoCapturing ? '📸 Opening Camera...' : '📸 Open Camera & Capture Photo'}
+                </Button>
+                
+                <Typography variant="body2" color="text.secondary" textAlign="center">
+                  OR
+                </Typography>
+                
+                <Button
+                  variant="outlined"
+                  startIcon={<PhotoCamera />}
+                  onClick={openFileInput}
+                  fullWidth
+                  sx={{ p: 2 }}
+                >
+                  📁 Upload Photo from Gallery
+                </Button>
+              </>
+            ) : (
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom color="success.main">
+                  ✅ Photo Captured Successfully!
+                </Typography>
+                
+                <Box sx={{ 
+                  border: '2px solid #4caf50', 
+                  borderRadius: 2, 
+                  p: 1, 
+                  mb: 2,
+                  display: 'inline-block'
+                }}>
+                  <img
+                    src={capturedPhoto}
+                    alt="Captured Photo"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '200px',
+                      borderRadius: '8px'
+                    }}
+                  />
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    onClick={capturePhoto}
+                    size="small"
+                  >
+                    📸 Retake Photo
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    startIcon={<PhotoCamera />}
+                    onClick={openFileInput}
+                    size="small"
+                  >
+                    📁 Upload Different Photo
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Clear />}
+                    onClick={clearCapturedPhoto}
+                    size="small"
+                  >
+                    🗑️ Clear Photo
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPhotoDialogOpen(false)}>Cancel</Button>
@@ -1707,28 +4844,1192 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         <DialogTitle>Digital Signature</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Draw your signature in the box below using mouse or touch.
+            ✍️ Draw your signature in the box below using mouse or touch.
+            {isMobileDevice() && (
+              <>
+                <br />
+                📱 <strong>Mobile:</strong> Use your finger to draw on the signature area below.
+              </>
+            )}
+            <br />
+            💡 <strong>Tip:</strong> Draw slowly and deliberately for the best signature quality.
           </Alert>
+          
           <Box sx={{ textAlign: 'center', border: '2px dashed #ccc', p: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {isMobileDevice() ? '👆 Touch and drag here to sign' : '🖱️ Click and drag here to sign'}
+            </Typography>
+            
             <canvas
               ref={canvasRef}
               width={400}
               height={200}
-              style={{ border: '1px solid #000', cursor: 'crosshair' }}
+              style={{ 
+                border: '1px solid #000', 
+                cursor: isMobileDevice() ? 'default' : 'crosshair',
+                touchAction: 'none', // Prevent default touch behaviors
+                backgroundColor: '#fafafa' // Light background for better visibility
+              }}
               onMouseDown={startDrawing}
               onMouseMove={draw}
               onMouseUp={stopDrawing}
               onMouseLeave={stopDrawing}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
             />
+            
+            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+              Signature area: 400x200 pixels
+            </Typography>
+            
+            {/* Drawing Status Indicator */}
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              {isDrawing ? (
+                <Alert severity="info" sx={{ py: 1 }}>
+                  <Typography variant="body2">
+                    ✍️ Drawing signature... Release to finish
+                  </Typography>
+                </Alert>
+              ) : signatureData ? (
+                <Alert severity="success" sx={{ py: 1 }}>
+                  <Typography variant="body2">
+                    ✅ Signature captured successfully
+                  </Typography>
+                </Alert>
+              ) : (
+                <Alert severity="info" sx={{ py: 1 }}>
+                  <Typography variant="body2">
+                    👆 Start drawing your signature above
+                  </Typography>
+                </Alert>
+              )}
+            </Box>
+            
+            {/* Drawing Controls */}
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Drawing Controls:
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => adjustDrawingSettings('thinner')}
+                >
+                  📏 Thinner
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => adjustDrawingSettings('thicker')}
+                >
+                  📏 Thicker
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => adjustDrawingSettings('lighter')}
+                >
+                  🌫️ Lighter
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => adjustDrawingSettings('darker')}
+                >
+                  🌫️ Darker
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="secondary"
+                  onClick={resetDrawingSettings}
+                >
+                  🔄 Reset
+                </Button>
+              </Box>
+              
+              {/* Color Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Signature Colors:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureColor('#000000')}
+                    sx={{ 
+                      borderColor: '#000000', 
+                      color: '#000000',
+                      '&:hover': { borderColor: '#000000', backgroundColor: '#f0f0f0' }
+                    }}
+                  >
+                    ⚫ Black
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureColor('#0000FF')}
+                    sx={{ 
+                      borderColor: '#0000FF', 
+                      color: '#0000FF',
+                      '&:hover': { borderColor: '#0000FF', backgroundColor: '#f08ff0' }
+                    }}
+                  >
+                    🔵 Blue
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureColor('#FF0000')}
+                    sx={{ 
+                      borderColor: '#FF0000', 
+                      color: '#FF0000',
+                      '&:hover': { borderColor: '#FF0000', backgroundColor: '#ff0000' }
+                    }}
+                  >
+                    🔴 Red
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureColor('#008000')}
+                    sx={{ 
+                      borderColor: '#008000', 
+                      color: '#008000',
+                      '&:hover': { borderColor: '#008000', backgroundColor: '#00ff00' }
+                    }}
+                  >
+                    🟢 Green
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Style Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Signature Styles:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyle('normal')}
+                  >
+                    ✍️ Normal
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyle('bold')}
+                  >
+                    ✍️ Bold
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyle('thin')}
+                  >
+                    ✍️ Thin
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyle('calligraphy')}
+                  >
+                    ✍️ Calligraphy
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Background Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Background:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBackground('white')}
+                    sx={{ 
+                      borderColor: '#ffffff', 
+                      color: '#000000',
+                      backgroundColor: '#ffffff',
+                      '&:hover': { borderColor: '#ffffff', backgroundColor: '#f0f0f0' }
+                    }}
+                  >
+                    ⚪ White
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBackground('light')}
+                    sx={{ 
+                      borderColor: '#f5f5f5', 
+                      color: '#000000',
+                      backgroundColor: '#f5f5f5',
+                      '&:hover': { borderColor: '#f5f5f5', backgroundColor: '#e0e0e0' }
+                    }}
+                  >
+                    ⚪ Light
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBackground('dark')}
+                    sx={{ 
+                      borderColor: '#2c2c2c', 
+                      color: '#ffffff',
+                      backgroundColor: '#2c2c2c',
+                      '&:hover': { borderColor: '#2c2c2c', backgroundColor: '#404040' }
+                    }}
+                  >
+                    ⚫ Dark
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBackground('transparent')}
+                  >
+                    🔍 Transparent
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Paper Size Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Paper Size:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperSize('small')}
+                  >
+                    📄 Small
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperSize('medium')}
+                  >
+                    📄 Medium
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperSize('large')}
+                  >
+                    📄 Large
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperSize('custom')}
+                  >
+                    📄 Custom
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Orientation Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Orientation:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureOrientation('landscape')}
+                  >
+                    📐 Landscape
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureOrientation('portrait')}
+                  >
+                    📐 Portrait
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureOrientation('square')}
+                  >
+                    📐 Square
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Paper Type Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Paper Type:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperType('plain')}
+                  >
+                    📄 Plain
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperType('lined')}
+                  >
+                    📄 Lined
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperType('grid')}
+                  >
+                    📄 Grid
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changePaperType('dotted')}
+                  >
+                    📄 Dotted
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Margin Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Margins:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureMargins('none')}
+                  >
+                    📏 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureMargins('small')}
+                  >
+                    📏 Small
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureMargins('medium')}
+                  >
+                    📏 Medium
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureMargins('large')}
+                  >
+                    📏 Large
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Watermark Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Watermark:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureWatermark('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureWatermark('draft')}
+                  >
+                    📝 Draft
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureWatermark('confidential')}
+                  >
+                    🔒 Confidential
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureWatermark('approved')}
+                  >
+                    ✅ Approved
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureWatermark('custom')}
+                  >
+                    ✏️ Custom
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Border Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Border Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBorder('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBorder('solid')}
+                  >
+                    ▬ Solid
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBorder('dashed')}
+                  >
+                    ▬ Dashed
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBorder('dotted')}
+                  >
+                    ▬ Dotted
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureBorder('double')}
+                  >
+                    ▬ Double
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Corner Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Corner Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureCorner('square')}
+                  >
+                    ⬜ Square
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureCorner('rounded')}
+                  >
+                    ⬜ Rounded
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureCorner('beveled')}
+                  >
+                    ⬜ Beveled
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureCorner('decorative')}
+                  >
+                    ⬜ Decorative
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Shadow Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Shadow Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureShadow('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureShadow('light')}
+                  >
+                    🌫️ Light
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureShadow('medium')}
+                  >
+                    🌫️ Medium
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureShadow('heavy')}
+                  >
+                    🌫️ Heavy
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureShadow('colored')}
+                  >
+                    🌫️ Colored
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Texture Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Texture Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTexture('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTexture('paper')}
+                  >
+                    📄 Paper
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTexture('canvas')}
+                  >
+                    🎨 Canvas
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTexture('leather')}
+                  >
+                    🧵 Leather
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTexture('metal')}
+                  >
+                    ⚙️ Metal
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Filter Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Filter Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFilter('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFilter('sepia')}
+                  >
+                    🟫 Sepia
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFilter('grayscale')}
+                  >
+                    ⚫ Grayscale
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFilter('invert')}
+                  >
+                    🔄 Invert
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFilter('blur')}
+                  >
+                    🌫️ Blur
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Effect Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Effect Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureEffect('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureEffect('glow')}
+                  >
+                    ✨ Glow
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureEffect('neon')}
+                  >
+                    ✨ Neon
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureEffect('emboss')}
+                  >
+                    ✨ Emboss
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureEffect('outline')}
+                  >
+                    ✨ Outline
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Animation Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Animation Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureAnimation('none')}
+                  >
+                    🚫 None
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureAnimation('fade')}
+                  >
+                    🌫️ Fade
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureAnimation('slide')}
+                  >
+                    ➡️ Slide
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureAnimation('bounce')}
+                  >
+                    ⬆️ Bounce
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureAnimation('rotate')}
+                  >
+                    🔄 Rotate
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Theme Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Theme Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTheme('classic')}
+                  >
+                    🎨 Classic
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTheme('modern')}
+                  >
+                    🎨 Modern
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTheme('vintage')}
+                  >
+                    🎨 Vintage
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTheme('futuristic')}
+                  >
+                    🎨 Futuristic
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTheme('nature')}
+                  >
+                    🎨 Nature
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Quality Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Quality Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureQuality('low')}
+                  >
+                    📉 Low
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureQuality('medium')}
+                  >
+                    📊 Medium
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureQuality('high')}
+                  >
+                    📈 High
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureQuality('ultra')}
+                  >
+                    📈 Ultra
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureQuality('custom')}
+                  >
+                    ⚙️ Custom
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Export Style Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Export Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureExportStyle('standard')}
+                  >
+                    📤 Standard
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureExportStyle('premium')}
+                  >
+                    📤 Premium
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureExportStyle('print')}
+                  >
+                    📤 Print
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureExportStyle('web')}
+                  >
+                    📤 Web
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureExportStyle('mobile')}
+                  >
+                    📤 Mobile
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Preset Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Preset Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignaturePreset('business')}
+                  >
+                    💼 Business
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignaturePreset('creative')}
+                  >
+                    🎨 Creative
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignaturePreset('formal')}
+                  >
+                    🎩 Formal
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignaturePreset('casual')}
+                  >
+                    😊 Casual
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignaturePreset('artistic')}
+                  >
+                    🖼️ Artistic
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Template Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Template Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTemplate('blank')}
+                  >
+                    📄 Blank
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTemplate('lined')}
+                  >
+                    📄 Lined
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTemplate('grid')}
+                  >
+                    📄 Grid
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTemplate('dotted')}
+                  >
+                    📄 Dotted
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureTemplate('ruled')}
+                  >
+                    📄 Ruled
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Layout Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Layout Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureLayout('center')}
+                  >
+                    🎯 Center
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureLayout('left')}
+                  >
+                    ⬅️ Left
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureLayout('right')}
+                  >
+                    ➡️ Right
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureLayout('top')}
+                  >
+                    ⬆️ Top
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureLayout('bottom')}
+                  >
+                    ⬇️ Bottom
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Style Combination Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Style Combination:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyleCombination('classic')}
+                  >
+                    🎨 Classic
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyleCombination('modern')}
+                  >
+                    🎨 Modern
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyleCombination('vintage')}
+                  >
+                    🎨 Vintage
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyleCombination('futuristic')}
+                  >
+                    🎨 Futuristic
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureStyleCombination('nature')}
+                  >
+                    🎨 Nature
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Final Style Selection */}
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Final Style:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFinalStyle('clean')}
+                  >
+                    ✨ Clean
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFinalStyle('decorative')}
+                  >
+                    ✨ Decorative
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFinalStyle('minimal')}
+                  >
+                    ✨ Minimal
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFinalStyle('elaborate')}
+                  >
+                    ✨ Elaborate
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => changeSignatureFinalStyle('custom')}
+                  >
+                    ✨ Custom
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+            
+            {/* Zoom Controls */}
+            <Box sx={{ mt: 1, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Zoom Controls:
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleZoom('out')}
+                >
+                  🔍 Zoom Out
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleZoom('in')}
+                >
+                  🔍 Zoom In
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="secondary"
+                  onClick={resetCanvasSize}
+                >
+                  📐 Reset Size
+                </Button>
+              </Box>
+            </Box>
+            
+            {/* Export Controls */}
+            {signatureData && (
+              <Box sx={{ mt: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Export Signature:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => exportSignature('png')}
+                  >
+                    📥 PNG
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => exportSignature('jpeg')}
+                  >
+                    📥 JPEG
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => exportSignature('svg')}
+                  >
+                    📥 SVG
+                  </Button>
+                </Box>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={clearSignature} startIcon={<Clear />}>
+          <Button onClick={clearSignatureFromForm} startIcon={<Clear />}>
             Clear
+          </Button>
+          <Button onClick={undoLastDrawing} variant="outlined" size="small">
+            Undo
+          </Button>
+          <Button onClick={importSignature} variant="outlined" size="small">
+            Import
+          </Button>
+          <Button onClick={showSignaturePreview} variant="outlined" size="small">
+            Preview
+          </Button>
+          <Button onClick={showDrawingStats} variant="outlined" size="small">
+            Stats
+          </Button>
+          <Button onClick={showHelp} variant="outlined" size="small">
+            Help
+          </Button>
+          <Button onClick={toggleFullScreen} variant="outlined" size="small">
+            Full Screen
+          </Button>
+          <Button onClick={testSignatureDrawing} variant="outlined" size="small">
+            Test Drawing
           </Button>
           <Button onClick={() => setSignatureOpen(false)}>Cancel</Button>
           <Button
-            onClick={() => setSignatureOpen(false)}
+            onClick={saveSignature}
             variant="contained"
             disabled={!signatureData}
           >
