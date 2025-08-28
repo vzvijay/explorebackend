@@ -216,7 +216,7 @@ const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  const handlePageChange = (event: unknown, newPage: number) => {
+  const handlePageChange = (_event: unknown, newPage: number) => {
     setPage(newPage);
   };
 
@@ -434,12 +434,12 @@ const AdminDashboardPage: React.FC = () => {
             <FormControl fullWidth size="small">
               <InputLabel>Sketch Photo</InputLabel>
               <Select
-                value={filters.has_sketch_photo}
+                value={filters.has_sketch_photo ? 'true' : 'false'}
                 label="Sketch Photo"
-                onChange={(e) => handleFilterChange('has_sketch_photo', e.target.value as boolean)}
+                onChange={(e) => handleFilterChange('has_sketch_photo', e.target.value === 'true')}
               >
-                <MenuItem value={false}>All Properties</MenuItem>
-                <MenuItem value={true}>With Sketch Photos</MenuItem>
+                <MenuItem value="false">All Properties</MenuItem>
+                <MenuItem value="true">With Sketch Photos</MenuItem>
               </Select>
             </FormControl>
           </Grid>

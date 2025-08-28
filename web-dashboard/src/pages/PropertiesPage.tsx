@@ -403,7 +403,7 @@ const PropertiesPage: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      {property.edit_count > 0 ? (
+                      {(property.edit_count || 0) > 0 ? (
                         <Box>
                           <Typography variant="caption" display="block">
                             Edited {property.edit_count} time(s)
