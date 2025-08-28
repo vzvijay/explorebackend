@@ -54,6 +54,23 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
 import { RoomDetail, PropertyUseDetails } from '../types';
 
+// Utility function to get API base URL
+const getApiBaseUrl = () => {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  console.log('🌐 Environment API URL:', apiUrl);
+  
+  if (apiUrl) {
+    return apiUrl;
+  }
+  
+  // Fallback for development
+  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const fallbackUrl = isDevelopment ? 'http://localhost:3000/api' : 'https://your-railway-app-name.railway.app/api';
+  
+  console.log('🔄 Using fallback API URL:', fallbackUrl);
+  return fallbackUrl;
+};
+
 interface FormData {
   survey_number: string;
   old_mc_property_number: string;
@@ -1061,11 +1078,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       return null;
     }
 
+    // File validation
+    if (sketchPhotoFile.size > 10 * 1024 * 1024) { // 10MB limit
+      toast.error('Sketch photo too large. Please select an image under 10MB.');
+      return null;
+    }
+
+    if (!sketchPhotoFile.type.startsWith('image/')) {
+      toast.error('Please select a valid image file for the sketch photo.');
+      return null;
+    }
+
     try {
       const formData = new FormData();
       formData.append('sketch_photo', sketchPhotoFile);
 
-      const response = await fetch(`http://localhost:3000/api/sketch-photo/${propertyId}`, {
+      // Get API URL from environment or fallback
+      const API_BASE_URL = getApiBaseUrl();
+      const uploadUrl = `${API_BASE_URL}/sketch-photo/${propertyId}`;
+      
+      console.log('🔄 Uploading sketch photo to:', uploadUrl);
+      console.log('📁 File details:', {
+        name: sketchPhotoFile.name,
+        size: `${(sketchPhotoFile.size / 1024 / 1024).toFixed(2)}MB`,
+        type: sketchPhotoFile.type
+      });
+
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1075,15 +1114,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to upload sketch photo');
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
       toast.success('Sketch photo uploaded successfully!');
       return result.data.sketch_photo;
     } catch (error: any) {
-      console.error('Error uploading sketch photo:', error);
-      toast.error(`Failed to upload sketch photo: ${error.message}`);
+      console.error('❌ Error uploading sketch photo:', error);
+      
+      // Provide specific error messages based on error type
+      let errorMessage = 'Failed to upload sketch photo';
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'Network error: Cannot connect to server. Please check your internet connection.';
+      } else if (error.name === 'AbortError') {
+        errorMessage = 'Upload timeout: Please try again.';
+      } else if (error.message.includes('HTTP 401')) {
+        errorMessage = 'Authentication error: Please log in again.';
+      } else if (error.message.includes('HTTP 413')) {
+        errorMessage = 'File too large: Please select a smaller image.';
+      } else if (error.message.includes('HTTP 500')) {
+        errorMessage = 'Server error: Please try again later.';
+      } else if (error.message) {
+        errorMessage = `Upload failed: ${error.message}`;
+      }
+      
+      toast.error(errorMessage);
       return null;
     }
   };
@@ -1136,14 +1193,19 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         
         // Upload sketch photo if there's a new one
         if (sketchPhotoFile) {
+          console.log('📤 Starting sketch photo upload for property:', editingProperty.id);
           const uploadedPhotoPath = await uploadSketchPhoto(editingProperty.id);
           if (uploadedPhotoPath) {
+            console.log('✅ Sketch photo uploaded successfully, updating property...');
             // Update the property with the new sketch photo path
             await propertiesApi.updateProperty(editingProperty.id, {
               sketch_photo: uploadedPhotoPath,
               sketch_photo_captured_at: new Date().toISOString(),
               edit_comment: formData.edit_comment // Include edit comment to pass validation
             } as any); // Type assertion to bypass Property interface limitation
+          } else {
+            console.warn('⚠️ Sketch photo upload failed, but continuing with property update');
+            toast.warning('Sketch photo upload failed, but property was updated successfully.');
           }
         }
         
@@ -1170,13 +1232,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         if (response.data && response.data.property && response.data.property.id) {
           // Upload sketch photo if there's one
           if (sketchPhotoFile) {
+            console.log('📤 Starting sketch photo upload for new property:', response.data.property.id);
             const uploadedPhotoPath = await uploadSketchPhoto(response.data.property.id);
             if (uploadedPhotoPath) {
+              console.log('✅ Sketch photo uploaded successfully, updating new property...');
               // Update the property with the sketch photo path
               await propertiesApi.updateProperty(response.data.property.id, {
                 sketch_photo: uploadedPhotoPath,
                 sketch_photo_captured_at: new Date().toISOString()
               });
+            } else {
+              console.warn('⚠️ Sketch photo upload failed for new property, but property was created successfully');
+              toast.warning('Sketch photo upload failed, but property was created successfully.');
             }
           }
           
@@ -2487,17 +2554,45 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Handle immediate sketch photo upload after capture
   const handleSketchPhotoCapture = async (file: File) => {
-    setSketchPhotoFile(file);
-    
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setSketchPhoto(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-    
-    // Show success message
-    toast.success('Sketch photo captured successfully! It will be uploaded when you submit the survey.');
+    try {
+      // File validation
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        toast.error('File too large. Please select an image under 10MB.');
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file.');
+        return;
+      }
+
+      // Log file details for debugging
+      console.log('📸 Sketch photo captured:', {
+        name: file.name,
+        size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+        type: file.type,
+        lastModified: new Date(file.lastModified).toLocaleString()
+      });
+
+      setSketchPhotoFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSketchPhoto(e.target?.result as string);
+      };
+      reader.onerror = () => {
+        console.error('❌ Error reading sketch photo file');
+        toast.error('Error reading photo file. Please try again.');
+      };
+      reader.readAsDataURL(file);
+      
+      // Show success message
+      toast.success('Sketch photo captured successfully! It will be uploaded when you submit the survey.');
+    } catch (error: any) {
+      console.error('❌ Error capturing sketch photo:', error);
+      toast.error('Error capturing photo. Please try again.');
+    }
   };
 
   // Function to open signature dialog and load existing signature if available
@@ -4625,6 +4720,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           : 'Complete digital survey form with all required fields for Maharashtra Municipal Corporation. Fields marked with * are mandatory.'
         }
       </Typography>
+      
+      {/* Debug Information - Remove in production */}
+      {import.meta.env.MODE === 'development' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            <strong>🔧 Debug Info:</strong> API Base URL: {getApiBaseUrl()}
+          </Typography>
+          <Typography variant="body2">
+            Environment: {import.meta.env.MODE} | VITE_API_URL: {import.meta.env.VITE_API_URL || 'Not set'}
+          </Typography>
+        </Alert>
+      )}
       
       {/* Required Fields Summary */}
       <Alert severity="info" sx={{ mb: 3 }}>
