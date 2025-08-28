@@ -20,6 +20,8 @@ import {
   Image as ImageIcon,
   PhotoCamera as PhotoCameraIcon
 } from '@mui/icons-material';
+import { Base64ImageData } from '../../types';
+import { downloadBase64Image, createBase64PreviewUrl } from '../../utils/base64Utils';
 
 // Utility function to get API base URL (same as PropertySurveyForm)
 const getApiBaseUrl = () => {
@@ -39,7 +41,8 @@ const getApiBaseUrl = () => {
 };
 
 interface SketchPhotoDisplayProps {
-  sketchPhotoPath: string | null;
+  sketchPhotoPath?: string | null; // Legacy file path support
+  sketchPhotoBase64?: Base64ImageData | null; // New base64 data support
   capturedAt: string | null;
   surveyNumber: string;
   ownerName: string;
@@ -50,6 +53,7 @@ interface SketchPhotoDisplayProps {
 
 const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
   sketchPhotoPath,
+  sketchPhotoBase64,
   capturedAt,
   surveyNumber,
   ownerName,
@@ -58,6 +62,12 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
   downloadable = true
 }) => {
   const [zoomDialog, setZoomDialog] = useState(false);
+
+  // Determine the actual photo source (prioritize base64 over legacy path)
+  const photoSource = sketchPhotoBase64?.data || sketchPhotoPath;
+  const isBase64 = !!sketchPhotoBase64?.data;
+  const isDataUrl = photoSource?.startsWith('data:');
+  const isLegacyPath = !isBase64 && !isDataUrl && !!sketchPhotoPath;
 
   // Size configurations
   const sizeConfig = {
@@ -70,16 +80,27 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
 
   // Handle download
   const handleDownload = async () => {
-    if (!sketchPhotoPath) return;
+    if (!photoSource) return;
 
     try {
-      // Check if sketchPhotoPath is a data URL (starts with data:)
-      if (sketchPhotoPath.startsWith('data:')) {
+      // If we have base64 data, use the utility function
+      if (isBase64 && sketchPhotoBase64) {
+        console.log('📥 Downloading sketch photo from base64 data');
+        
+        const filename = `sketch_${surveyNumber}_${Date.now()}.${sketchPhotoBase64.type.split('/')[1] || 'jpg'}`;
+        downloadBase64Image(sketchPhotoBase64.data, filename, sketchPhotoBase64.type);
+        
+        console.log('✅ Sketch photo downloaded successfully from base64!');
+        return;
+      }
+
+      // Check if photoSource is a data URL (starts with data:)
+      if (isDataUrl) {
         console.log('📥 Downloading sketch photo from data URL');
         
         // Create download link for data URL
         const link = document.createElement('a');
-        link.href = sketchPhotoPath;
+        link.href = photoSource;
         link.download = `sketch_${surveyNumber}_${Date.now()}.jpg`;
         
         document.body.appendChild(link);
@@ -90,41 +111,44 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
         return;
       }
 
-      // If it's a file path, try to fetch from backend
-      const baseUrl = getApiBaseUrl();
-      const downloadUrl = `${baseUrl}/${sketchPhotoPath}`;
-      
-      console.log('📥 Downloading sketch photo from backend:', downloadUrl);
-      
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // If it's a legacy file path, try to fetch from backend
+      if (isLegacyPath) {
+        const baseUrl = getApiBaseUrl();
+        const downloadUrl = `${baseUrl}/${sketchPhotoPath}`;
+        
+        console.log('📥 Downloading sketch photo from backend:', downloadUrl);
+        
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Extract filename from path
+        const filename = sketchPhotoPath.split('/').pop() || 'sketch_photo.jpg';
+        link.download = `sketch_${surveyNumber}_${filename}`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        console.log('✅ Sketch photo downloaded successfully from backend!');
+        return;
       }
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      
-      // Extract filename from path
-      const filename = sketchPhotoPath.split('/').pop() || 'sketch_photo.jpg';
-      link.download = `sketch_${surveyNumber}_${filename}`;
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      console.log('✅ Sketch photo downloaded successfully from backend!');
     } catch (error: any) {
       console.error('❌ Error downloading sketch photo:', error);
       
       // If backend download fails, try to use the data URL if available
-      if (sketchPhotoPath && !sketchPhotoPath.startsWith('data:')) {
+      if (isLegacyPath && !isDataUrl) {
         console.warn('⚠️ Backend download failed. Trying to use cached image data...');
         
         // Try to find the image in the DOM or use a fallback
-        const imgElement = document.querySelector(`img[src*="${sketchPhotoPath.split('/').pop()}"]`) as HTMLImageElement;
+        const imgElement = document.querySelector(`img[src*="${sketchPhotoPath?.split('/').pop()}"]`) as HTMLImageElement;
         if (imgElement && imgElement.src && imgElement.src.startsWith('data:')) {
           const link = document.createElement('a');
           link.href = imgElement.src;
@@ -139,7 +163,13 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
         }
       }
       
-      console.error('❌ Failed to download sketch photo. The file may not exist on the server.');
+      if (isBase64) {
+        console.error('❌ Failed to download sketch photo from base64 data.');
+      } else if (isLegacyPath) {
+        console.error('❌ Failed to download sketch photo. The file may not exist on the server.');
+      } else {
+        console.error('❌ Failed to download sketch photo. Unknown error.');
+      }
     }
   };
 
@@ -155,23 +185,27 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
     });
   };
 
-  // Debug: Log sketch photo path type
+  // Debug: Log sketch photo source type
   React.useEffect(() => {
-    if (sketchPhotoPath) {
-      console.log('🖼️ SketchPhotoDisplay - Photo path type:', 
-        sketchPhotoPath.startsWith('data:') ? 'Data URL' : 'File Path'
-      );
-      console.log('🖼️ SketchPhotoDisplay - Photo path:', sketchPhotoPath);
-      
-      if (sketchPhotoPath.startsWith('data:')) {
+    if (photoSource) {
+      if (isBase64) {
+        console.log('🖼️ SketchPhotoDisplay - Photo source: Base64 Data');
+        console.log('🖼️ SketchPhotoDisplay - Base64 size:', sketchPhotoBase64?.size, 'bytes');
+        console.log('🖼️ SketchPhotoDisplay - Base64 type:', sketchPhotoBase64?.type);
+        console.log('✅ Using base64 data - image should display immediately');
+      } else if (isDataUrl) {
+        console.log('🖼️ SketchPhotoDisplay - Photo source: Data URL');
+        console.log('🖼️ SketchPhotoDisplay - Photo source:', photoSource);
         console.log('✅ Using data URL - image should display immediately');
-      } else {
+      } else if (isLegacyPath) {
+        console.log('🖼️ SketchPhotoDisplay - Photo source: Legacy File Path');
+        console.log('🖼️ SketchPhotoDisplay - Photo path:', sketchPhotoPath);
         console.log('⚠️ Using file path - image will try to load from backend');
       }
     }
-  }, [sketchPhotoPath]);
+  }, [photoSource, isBase64, isDataUrl, isLegacyPath, sketchPhotoBase64]);
 
-  if (!sketchPhotoPath) {
+  if (!photoSource) {
     return (
       <Card 
         sx={{ 
@@ -204,7 +238,9 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
       <Card sx={{ width, height, position: 'relative' }}>
         <CardMedia
           component="img"
-          image={sketchPhotoPath.startsWith('data:') ? sketchPhotoPath : `${getApiBaseUrl()}/${sketchPhotoPath}`}
+          image={isBase64 ? createBase64PreviewUrl(sketchPhotoBase64!.data, sketchPhotoBase64!.type) : 
+                 isDataUrl ? photoSource : 
+                 `${getApiBaseUrl()}/${sketchPhotoPath}`}
           alt={`Sketch photo for survey ${surveyNumber}`}
           sx={{ 
             width: '100%', 
@@ -215,16 +251,18 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
           onClick={() => setZoomDialog(true)}
           onError={(e) => {
             console.error('❌ Error loading sketch photo image:', e);
-            console.log('🖼️ Failed to load sketch photo from:', sketchPhotoPath);
+            console.log('🖼️ Failed to load sketch photo from:', photoSource);
             
-            // If it's a file path and fails, try to show a fallback
-            if (!sketchPhotoPath.startsWith('data:')) {
+            if (isBase64) {
+              console.warn('⚠️ Base64 image failed to load. This might be a data corruption issue.');
+            } else if (isLegacyPath) {
               console.warn('⚠️ Backend image failed to load. This might be a file path issue.');
             }
           }}
           onLoad={() => {
             console.log('✅ Sketch photo loaded successfully from:', 
-              sketchPhotoPath.startsWith('data:') ? 'data URL' : 'backend path'
+              isBase64 ? 'base64 data' : 
+              isDataUrl ? 'data URL' : 'backend path'
             );
           }}
         />
@@ -304,12 +342,13 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
               {/* Debug info - show source type */}
               {import.meta.env.MODE === 'development' && (
                 <Chip 
-                  label={sketchPhotoPath.startsWith('data:') ? 'Data URL' : 'File Path'} 
+                  label={isBase64 ? 'Base64' : isDataUrl ? 'Data URL' : 'File Path'} 
                   size="small" 
                   sx={{ 
                     height: 20, 
                     fontSize: '0.7rem',
-                    bgcolor: sketchPhotoPath.startsWith('data:') ? 'rgba(0,255,0,0.3)' : 'rgba(255,165,0,0.3)',
+                    bgcolor: isBase64 ? 'rgba(0,255,0,0.3)' : 
+                             isDataUrl ? 'rgba(0,150,255,0.3)' : 'rgba(255,165,0,0.3)',
                     color: 'white'
                   }} 
                 />
@@ -328,7 +367,9 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
       >
         <DialogContent sx={{ p: 0, textAlign: 'center' }}>
           <img
-            src={sketchPhotoPath.startsWith('data:') ? sketchPhotoPath : `${getApiBaseUrl()}/${sketchPhotoPath}`}
+            src={isBase64 ? createBase64PreviewUrl(sketchPhotoBase64!.data, sketchPhotoBase64!.type) : 
+                 isDataUrl ? photoSource : 
+                 `${getApiBaseUrl()}/${sketchPhotoPath}`}
             alt={`Sketch photo for survey ${surveyNumber}`}
             style={{
               maxWidth: '100%',
@@ -337,11 +378,12 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
             }}
             onError={(e) => {
               console.error('❌ Error loading sketch photo in zoom dialog:', e);
-              console.log('🖼️ Failed to load sketch photo in zoom dialog from:', sketchPhotoPath);
+              console.log('🖼️ Failed to load sketch photo in zoom dialog from:', photoSource);
             }}
             onLoad={() => {
               console.log('✅ Sketch photo loaded successfully in zoom dialog from:', 
-                sketchPhotoPath.startsWith('data:') ? 'data URL' : 'backend path'
+                isBase64 ? 'base64 data' : 
+                isDataUrl ? 'data URL' : 'backend path'
               );
             }}
           />
