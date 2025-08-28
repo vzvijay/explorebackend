@@ -708,9 +708,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           // Draw video frame to canvas
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-                  // Convert to data URL with 70% compression
-        const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setCapturedPhoto(photoDataUrl);
+                          // Convert to data URL with 70% compression using unified function
+        const base64Data = compressPhotoWithCanvas(canvas, 0.7);
+        const photoDataUrl = `data:image/jpeg;base64,${base64Data.data}`;
+        setCapturedPhoto(photoDataUrl);
           
           // Stop camera stream
           stream.getTracks().forEach(track => track.stop());
@@ -800,10 +801,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     toast.info('Photo cleared. Please capture a new photo.');
   };
 
-  // Function to check camera support
+  // Function to check camera support with better detection
   const checkCameraSupport = () => {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   };
+
+
 
   // Function to check if device is mobile
   const isMobileDevice = () => {
@@ -2565,6 +2568,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
 
 
+  // Unified photo compression function
+  const compressPhotoWithCanvas = (canvas: HTMLCanvasElement, quality: number = 0.7): Base64ImageData => {
+    const photoDataUrl = canvas.toDataURL('image/jpeg', quality);
+    return {
+      data: photoDataUrl.split(',')[1], // Extract base64 data
+      size: getBase64Size(photoDataUrl.split(',')[1]),
+      type: 'image/jpeg',
+      filename: 'photo.jpg'
+    };
+  };
+
   // New functions for canvas-based sketch photo capture
   const openSketchPhotoDialog = () => {
     setSketchPhotoDialogOpen(true);
@@ -2575,93 +2589,132 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const captureSketchPhoto = async () => {
+    let stream: MediaStream | null = null;
+    let video: HTMLVideoElement | null = null;
+    
     try {
       setSketchPhotoCapturing(true);
       toast.info('Opening camera for sketch photo... Please wait.');
       
-      // Try to access camera
+      // Try to access camera with timeout
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        const cameraOptions = {
           video: { 
             facingMode: isMobileDevice() ? 'environment' : 'user',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 1920, max: 2560 },
+            height: { ideal: 1080, max: 1440 }
           } 
-        });
+        };
+        
+        // Add timeout to camera access
+        const timeoutPromise = new Promise<MediaStream>((_, reject) => 
+          setTimeout(() => reject(new Error('Camera access timeout. Please try again.')), 30000)
+        );
+        
+        stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia(cameraOptions),
+          timeoutPromise
+        ]);
         
         // Create video element to capture from camera
-        const video = document.createElement('video');
+        video = document.createElement('video');
         video.srcObject = stream;
         video.muted = true;
-        video.play();
+        video.playsInline = true; // Better mobile support
         
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve(true);
+        // Wait for video to be ready with timeout
+        const videoReadyPromise = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Video initialization timeout')), 10000);
+          video!.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            resolve();
+          };
+          video!.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Video initialization failed'));
+          };
         });
+        
+        await videoReadyPromise;
+        await video.play();
         
         toast.info('Camera ready! Position your sketch in frame and click capture.');
         
-        // Create canvas to capture the photo
+        // Create canvas to capture the photo with size limits
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
+        const maxWidth = 1920;
+        const maxHeight = 1080;
         
-        if (ctx) {
-          // Draw video frame to canvas
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // Convert to data URL with 70% compression (same as owner photos)
-          const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          
-          // Convert to Base64ImageData format
-          const base64Data = {
-            data: photoDataUrl.split(',')[1], // Extract base64 data
-            size: getBase64Size(photoDataUrl.split(',')[1]),
-            type: 'image/jpeg',
-            filename: 'sketch_photo.jpg'
-          };
-          
-          // Store compressed base64 data
-          setSketchPhotoBase64(base64Data);
-          
-          // Create preview URL for display
-          const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
-          setSketchPhoto(previewUrl);
-          
-          // Stop camera stream
-          stream.getTracks().forEach(track => track.stop());
-          
-          setSketchPhotoDialogOpen(false);
-          toast.success('Sketch photo captured successfully with 70% compression!');
-          
-          // Log success for debugging
-          console.log('📸 Sketch photo captured with canvas and 70% compression:', {
-            size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
-            type: base64Data.type,
-            base64Length: base64Data.data.length,
-            compression: '70% quality'
-          });
+        // Calculate optimal dimensions
+        let { width, height } = video;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
         }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Failed to get canvas context');
+        }
+        
+        // Draw video frame to canvas
+        ctx.drawImage(video, 0, 0, width, height);
+        
+        // Convert to data URL with 70% compression using unified function
+        const base64Data = compressPhotoWithCanvas(canvas, 0.7);
+        base64Data.filename = 'sketch_photo.jpg';
+        
+        // Store compressed base64 data
+        setSketchPhotoBase64(base64Data);
+        
+        // Create preview URL for display
+        const previewUrl = createBase64PreviewUrl(base64Data.data, base64Data.type);
+        setSketchPhoto(previewUrl);
+        
+        setSketchPhotoDialogOpen(false);
+        toast.success('Sketch photo captured successfully!');
+        
+        // Log success for debugging
+        console.log('📸 Sketch photo captured with canvas and 70% compression:', {
+          size: `${(base64Data.size / 1024 / 1024).toFixed(2)}MB`,
+          type: base64Data.type,
+          base64Length: base64Data.data.length,
+          compression: '70% quality',
+          dimensions: `${width}x${height}`
+        });
       } else {
         toast.error('Camera not supported. Please use a device with camera access.');
       }
     } catch (error: any) {
       console.error('Camera access error:', error);
       
+      let errorMessage = 'Camera error. Please try again.';
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          toast.error('Camera access denied. Please allow camera permissions.');
+          errorMessage = 'Camera access denied. Please allow camera permissions and try again.';
         } else if (error.name === 'NotFoundError') {
-          toast.error('No camera found. Please use a device with camera access.');
+          errorMessage = 'No camera found. Please use a device with camera access.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = error.message;
         } else {
-          toast.error('Camera error. Please try again.');
+          errorMessage = `Camera error: ${error.message}`;
         }
-      } else {
-        toast.error('Camera error. Please try again.');
       }
+      
+      toast.error(errorMessage);
     } finally {
+      // Always cleanup resources
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (video) {
+        video.srcObject = null;
+        video.remove();
+      }
       setSketchPhotoCapturing(false);
     }
   };
@@ -5037,6 +5090,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 📱 <strong>Mobile:</strong> Camera will open in your device's native camera app.
               </>
             )}
+            <br />
+            🔒 <strong>Permission:</strong> Camera access is required for this feature.
           </Alert>
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
