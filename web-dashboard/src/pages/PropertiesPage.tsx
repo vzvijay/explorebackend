@@ -40,6 +40,7 @@ import { propertiesApi } from '../services/api';
 import { Property } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
+import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 
 const PropertiesPage: React.FC = () => {
   const { user } = useAuth();
@@ -621,7 +622,7 @@ const PropertiesPage: React.FC = () => {
                 <Typography variant="h6" gutterBottom>
                   📸 Sketch Photo
                 </Typography>
-                {selectedProperty.sketch_photo ? (
+                {(selectedProperty.sketch_photo || selectedProperty.sketch_photo_base64) ? (
                   <Box sx={{ textAlign: 'center' }}>
                     <Box 
                       sx={{ 
@@ -637,14 +638,15 @@ const PropertiesPage: React.FC = () => {
                       }}
                       onClick={() => setSketchPhotoModal(true)}
                     >
-                      <img
-                        src={`http://localhost:3000/${selectedProperty.sketch_photo}`}
-                        alt="Sketch Photo"
-                        style={{
-                          width: '200px',
-                          height: '150px',
-                          objectFit: 'cover'
-                        }}
+                      <SketchPhotoDisplay
+                        sketchPhotoPath={selectedProperty.sketch_photo}
+                        sketchPhotoBase64={selectedProperty.sketch_photo_base64}
+                        capturedAt={selectedProperty.sketch_photo_captured_at}
+                        surveyNumber={selectedProperty.survey_number}
+                        ownerName={selectedProperty.owner_name}
+                        showMetadata={false}
+                        size="medium"
+                        downloadable={false}
                       />
                     </Box>
                     
@@ -737,17 +739,19 @@ const PropertiesPage: React.FC = () => {
           Sketch Photo - {selectedProperty?.survey_number}
         </DialogTitle>
         <DialogContent>
-          {selectedProperty?.sketch_photo && (
-            <img
-              src={`http://localhost:3000/${selectedProperty.sketch_photo}`}
-              alt="Sketch Photo"
-              style={{
-                width: '100%',
-                height: 'auto',
-                maxHeight: '70vh',
-                objectFit: 'contain'
-              }}
-            />
+          {(selectedProperty?.sketch_photo || selectedProperty?.sketch_photo_base64) && (
+            <Box sx={{ textAlign: 'center' }}>
+              <SketchPhotoDisplay
+                sketchPhotoPath={selectedProperty.sketch_photo}
+                sketchPhotoBase64={selectedProperty.sketch_photo_base64}
+                capturedAt={selectedProperty.sketch_photo_captured_at}
+                surveyNumber={selectedProperty.survey_number}
+                ownerName={selectedProperty.owner_name}
+                showMetadata={true}
+                size="large"
+                downloadable={true}
+              />
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
