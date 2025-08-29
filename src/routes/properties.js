@@ -13,6 +13,17 @@ const {
 
 const router = express.Router();
 
+// Middleware to clean empty strings before validation
+const cleanEmptyStrings = (req, res, next) => {
+  // Clean empty strings for optional fields
+  Object.keys(req.body).forEach(key => {
+    if (req.body[key] === '') {
+      req.body[key] = null;
+    }
+  });
+  next();
+};
+
 // Property validation rules
 const propertyValidation = [
   // Basic Information
@@ -87,8 +98,14 @@ const propertyValidation = [
     .isLength({ max: 50 }),
   body('bp_date')
     .optional()
-    .isISO8601()
-    .withMessage('Valid date is required'),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD)'),
   
   // Area Measurements
   body('plot_area')
@@ -109,14 +126,20 @@ const propertyValidation = [
   // Utility Connections
   body('water_connection')
     .optional()
-    .isIn([0, 1, 2, 3])
-    .withMessage('Water connection must be 0, 1, 2, or 3'),
+    .isIn([0, 1, 2, 3]),
   body('water_connection_number')
     .optional()
     .isLength({ max: 50 }),
   body('water_connection_date')
     .optional()
-    .isISO8601(),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD)'),
   body('electricity_connection')
     .optional()
     .isBoolean(),
@@ -304,6 +327,7 @@ router.get('/:id',
 router.put('/:id', 
   authenticateToken, 
   param('id').isUUID().withMessage('Valid property ID is required'),
+  cleanEmptyStrings,
   propertyUpdateValidation,
   checkPropertyAccess,
   updateProperty
