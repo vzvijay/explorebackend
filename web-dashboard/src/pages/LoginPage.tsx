@@ -85,6 +85,20 @@ const LoginPage: React.FC = () => {
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
           </Box>
+          
+          {/* Marathi Footer */}
+          <Box
+            sx={{
+              textAlign: 'center',
+              mt: 3,
+              pt: 2,
+              borderTop: '1px solid #e0e0e0',
+              color: 'text.secondary',
+              fontSize: '0.875rem'
+            }}
+          >
+            © २०२५ सर्वेक्षण. बदलाची सुरुवात तुमच्यापासून! ❤️
+          </Box>
         </Paper>
       </Box>
     </Container>
