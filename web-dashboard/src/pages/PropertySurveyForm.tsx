@@ -228,6 +228,28 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     return aadharRegex.test(aadhar);
   };
 
+  const formatAadharNumber = (value: string): string => {
+    // Remove all non-digits
+    const digits = value.replace(/\D/g, '');
+    
+    // Limit to 12 digits
+    const limitedDigits = digits.slice(0, 12);
+    
+    // Format as 1234-5678-9012
+    if (limitedDigits.length <= 4) {
+      return limitedDigits;
+    } else if (limitedDigits.length <= 8) {
+      return `${limitedDigits.slice(0, 4)}-${limitedDigits.slice(4)}`;
+    } else {
+      return `${limitedDigits.slice(0, 4)}-${limitedDigits.slice(4, 8)}-${limitedDigits.slice(8)}`;
+    }
+  };
+
+  const handleAadharChange = (value: string) => {
+    const formatted = formatAadharNumber(value);
+    handleInputChange('aadhar_number', formatted);
+  };
+
   const validateForm = (): string[] => {
     const errors: string[] = [];
     
@@ -249,64 +271,143 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // GPS Functions (keeping the working implementation)
-  const checkLocationPermission = async (): Promise<boolean> => {
-    if (!navigator.permissions) return true;
-    
-    try {
-      const result = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
-      return result.state === 'granted';
-    } catch (error) {
-      console.log('Permission API not supported, proceeding with GPS request');
-      return true;
-    }
-  };
-
+  // GPS Functions - Enhanced Implementation with Fallbacks
   const getCurrentLocation = async () => {
+    console.log('📍 GPS: Starting location capture...');
     setLocationLoading(true);
     setLocationError(null);
     
+    // Clear any previous errors
+    setLocationError(null);
+    
     try {
-      const hasPermission = await checkLocationPermission();
-      
-      if (!hasPermission) {
-        setLocationError('Location permission denied. Please enable location access in your browser settings.');
-        setLocationLoading(false);
-        return;
+      // Check if geolocation is supported
+      if (!navigator.geolocation) {
+        throw new Error('Geolocation is not supported by this browser');
       }
 
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 30000,
-          maximumAge: 0
+      console.log('📍 GPS: Geolocation supported, attempting to get location...');
+      
+      // Try multiple GPS strategies
+      let position: GeolocationPosition | null = null;
+      
+      // Strategy 1: High accuracy with longer timeout
+      try {
+        console.log('📍 GPS: Strategy 1 - High accuracy GPS...');
+        position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          const options = {
+            enableHighAccuracy: true,
+            timeout: 45000, // 45 seconds for high accuracy
+            maximumAge: 0
+          };
+          
+          console.log('📍 GPS: High accuracy options:', options);
+          
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              console.log('📍 GPS: High accuracy success!', pos);
+              resolve(pos);
+            },
+            (error) => {
+              console.log('📍 GPS: High accuracy failed:', error);
+              reject(error);
+            },
+            options
+          );
         });
-      });
+      } catch (error: any) {
+        console.log('📍 GPS: High accuracy failed, trying low accuracy...');
+        
+        // Strategy 2: Low accuracy (faster, works indoors)
+        try {
+          position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            const options = {
+              enableHighAccuracy: false, // Low accuracy for better success rate
+              timeout: 30000,
+              maximumAge: 60000 // Accept cached position up to 1 minute old
+            };
+            
+            console.log('📍 GPS: Low accuracy options:', options);
+            
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                console.log('📍 GPS: Low accuracy success!', pos);
+                resolve(pos);
+              },
+              (error) => {
+                console.log('📍 GPS: Low accuracy failed:', error);
+                reject(error);
+              },
+              options
+            );
+          });
+        } catch (lowAccuracyError: any) {
+          console.log('📍 GPS: Low accuracy also failed:', lowAccuracyError);
+          throw lowAccuracyError; // Throw the last error
+        }
+      }
+
+      if (!position) {
+        throw new Error('Failed to get location after trying all strategies');
+      }
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
       
+      console.log('📍 GPS: Coordinates captured - Lat:', lat, 'Lng:', lng, 'Accuracy:', accuracy, 'meters');
+      
+      // Update location state
       setLocation({ lat, lng });
+      
+      // Update form data
       setFormData(prev => ({
         ...prev,
         latitude: lat.toString(),
         longitude: lng.toString()
       }));
       
+      console.log('📍 GPS: Form data updated, looking up address...');
+      
       // Look up address
       await lookupAddressFromCoordinates(lat, lng);
       
+      console.log('📍 GPS: Location capture completed successfully!');
+      
+      // Show success message with accuracy info
+      if (accuracy <= 10) {
+        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m`);
+      } else if (accuracy <= 100) {
+        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m (Good)`);
+      } else {
+        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m (Fair - consider moving outdoors)`);
+      }
+      
     } catch (error: any) {
-      console.error('GPS Error:', error);
+      console.error('📍 GPS: Error in getCurrentLocation:', error);
+      
+      let errorMessage = 'Failed to get location. Please try again.';
+      let userTip = '';
       
       if (error.code === 1) {
-        setLocationError('Location access denied. Please enable location services and grant permission.');
+        errorMessage = 'Location access denied. Please enable location services and grant permission in your browser settings.';
+        userTip = 'Go to browser settings → Privacy → Location → Allow';
       } else if (error.code === 2) {
-        setLocationError('Location unavailable. Please try again or move to a different location.');
+        errorMessage = 'Location unavailable. This usually means poor GPS signal or you\'re indoors.';
+        userTip = 'Try moving outdoors, near a window, or wait a few minutes for GPS to acquire signal';
       } else if (error.code === 3) {
-        setLocationError('Location request timed out. Please try again.');
-      } else {
-        setLocationError('Failed to get location. Please check your device settings and try again.');
+        errorMessage = 'Location request timed out. GPS signal is weak.';
+        userTip = 'Try moving outdoors or wait longer for GPS to acquire signal';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setLocationError(`${errorMessage} ${userTip}`);
+      toast.error(errorMessage);
+      
+      // Show specific mobile tips
+      if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        toast.info('📱 Mobile Tip: Ensure Location Services are ON in your device settings');
       }
     } finally {
       setLocationLoading(false);
@@ -576,12 +677,45 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
 
-  // Signature functions
+  // Signature functions - Enhanced Implementation
   const openSignatureDialog = () => {
     setSignatureOpen(true);
+    
+    // Clear canvas and set up drawing context when dialog opens
+    setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        console.log('✍️ Signature: Setting up canvas...');
+        
+        // Set canvas dimensions
+        canvas.width = 400;
+        canvas.height = 200;
+        
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Clear the canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Set default drawing style
+          ctx.strokeStyle = '#000000'; // Black color
+          ctx.lineWidth = 3; // Line thickness
+          ctx.lineCap = 'round'; // Rounded line ends
+          ctx.lineJoin = 'round'; // Rounded line joins
+          
+          console.log('✍️ Signature: Canvas setup complete');
+        }
+      }
+    }, 100);
   };
 
   const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
     setSignatureData('');
     toast.info('Signature cleared.');
   };
@@ -592,14 +726,24 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    console.log('✍️ Signature: Starting to draw...');
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Set drawing style
+        ctx.strokeStyle = '#000000'; // Black color
+        ctx.lineWidth = 3; // Line thickness
+        ctx.lineCap = 'round'; // Rounded line ends
+        ctx.lineJoin = 'round'; // Rounded line joins
+        
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        
+        console.log('✍️ Signature: Starting at position:', x, y);
+        
         ctx.beginPath();
         ctx.moveTo(x, y);
       }
@@ -615,6 +759,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        
         ctx.lineTo(x, y);
         ctx.stroke();
       }
@@ -622,6 +767,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const stopDrawing = () => {
+    console.log('✍️ Signature: Stopping drawing...');
     setIsDrawing(false);
     const canvas = canvasRef.current;
     if (canvas) {
@@ -635,38 +781,83 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const saveSignature = () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      const dataURL = canvas.toDataURL();
-      setSignatureData(dataURL);
-      setSignatureOpen(false);
-      toast.success('Signature saved successfully!');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Check if anything was drawn
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const hasContent = imageData.data.some(pixel => pixel !== 0);
+        
+        if (!hasContent) {
+          toast.error('Please draw a signature before saving');
+          return;
+        }
+        
+        const dataURL = canvas.toDataURL();
+        setSignatureData(dataURL);
+        setSignatureOpen(false);
+        toast.success('Signature saved successfully!');
+        console.log('✍️ Signature: Saved successfully');
+      }
     }
   };
 
-  // Touch events for mobile
+  // Touch events for mobile - Enhanced Implementation
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    console.log('✍️ Signature: Touch start');
+    
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: touch.clientX,
-      clientY: touch.clientY
-    });
-    canvasRef.current?.dispatchEvent(mouseEvent);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        setIsDrawing(true);
+      }
+    }
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (!isDrawing) return;
+    
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
-      clientX: touch.clientX,
-      clientY: touch.clientY
-    });
-    canvasRef.current?.dispatchEvent(mouseEvent);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+    }
   };
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    const mouseEvent = new MouseEvent('mouseup', {});
-    canvasRef.current?.dispatchEvent(mouseEvent);
+    console.log('✍️ Signature: Touch end');
+    setIsDrawing(false);
+    
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.closePath();
+      }
+    }
   };
 
   // Property use management
@@ -1165,7 +1356,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 fullWidth
                 label="Aadhar Number (12 digits)"
                 value={formData.aadhar_number}
-                onChange={(e) => handleInputChange('aadhar_number', e.target.value)}
+                onChange={(e) => handleAadharChange(e.target.value)}
                 placeholder="1234-5678-9012"
                 inputProps={{ maxLength: 14 }}
                 helperText="Format: 1234-5678-9012"
@@ -1644,6 +1835,68 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       )}
                     </Button>
                   </Grid>
+                  
+                  {/* Debug Button */}
+                  <Grid item xs={12} sm={6}>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => {
+                        console.log('📍 GPS Debug Info:');
+                        console.log('- navigator.geolocation:', !!navigator.geolocation);
+                        console.log('- Current form data:', formData);
+                        console.log('- Location state:', location);
+                        console.log('- Location loading:', locationLoading);
+                        console.log('- Location error:', locationError);
+                        toast.info('GPS debug info logged to console. Press F12 to view.');
+                      }}
+                      fullWidth
+                    >
+                      🐛 Debug GPS
+                    </Button>
+                  </Grid>
+                  
+                  {/* Manual GPS Input */}
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" gutterBottom>
+                      📍 Manual GPS Input (if automatic fails)
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          fullWidth
+                          label="Manual Latitude"
+                          value={formData.latitude}
+                          onChange={(e) => handleInputChange('latitude', e.target.value)}
+                          placeholder="18.5204"
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          fullWidth
+                          label="Manual Longitude"
+                          value={formData.longitude}
+                          onChange={(e) => handleInputChange('longitude', e.target.value)}
+                          placeholder="73.8567"
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleManualCoordinateEntry}
+                          disabled={!formData.latitude || !formData.longitude}
+                          fullWidth
+                          sx={{ height: '40px' }}
+                        >
+                          🔍 Lookup Address
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </Grid>
                 </Grid>
                 
                 {/* Location Status */}
@@ -1657,6 +1910,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       <strong>Mobile Tip:</strong> Make sure location services are enabled in your device settings
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      <strong>Browser Tip:</strong> Check browser console (F12) for detailed GPS logs
                     </Typography>
                   </Alert>
                 )}
@@ -1696,6 +1952,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       You can still enter coordinates and address manually
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      <strong>Troubleshooting:</strong> Check browser console (F12) for detailed error logs
                     </Typography>
                   </Alert>
                 )}
