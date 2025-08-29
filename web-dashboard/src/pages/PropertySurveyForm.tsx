@@ -424,9 +424,57 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     console.log('✅ Demo mode enabled with coordinates:', demoLat, demoLng);
   };
 
-  const getCurrentLocation = () => {
+  // Check location permission status
+  const checkLocationPermission = async (): Promise<boolean> => {
+    if (!navigator.permissions) {
+      // Fallback for browsers that don't support permissions API
+      return true;
+    }
+    
+    try {
+      const permission = await navigator.permissions.query({ name: 'geolocation' });
+      return permission.state === 'granted';
+    } catch (error) {
+      console.log('Permissions API not supported, proceeding with geolocation request');
+      return true;
+    }
+  };
+
+  // Request location permission explicitly
+  const requestLocationPermission = async (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(false);
+        return;
+      }
+
+      // Try to get current position to trigger permission request
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true), // Success means permission granted
+        (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            resolve(false);
+          } else {
+            // Other errors don't necessarily mean permission denied
+            resolve(true);
+          }
+        },
+        { timeout: 5000, enableHighAccuracy: false }
+      );
+    });
+  };
+
+  const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
       toast.error('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    // Check permission first
+    const hasPermission = await checkLocationPermission();
+    if (!hasPermission) {
+      setLocationError('Location permission denied. Please enable location access in your browser settings.');
+      toast.error('Location permission required');
       return;
     }
 
@@ -452,6 +500,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             const accuracy = position.coords.accuracy;
 
             console.log('✅ Location captured successfully:', { lat, lng, accuracy });
+
+            // Clear any previous errors since we succeeded
+            setLocationError(null);
 
             // Update location state
             setLocation({ lat, lng });
@@ -492,7 +543,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           let errorMessage = 'Failed to capture location';
           switch (error.code) {
             case error.PERMISSION_DENIED:
-              errorMessage = 'Location access denied. Please enable location services and try again.';
+              errorMessage = 'Location access denied. Please enable location services in your browser settings and try again.';
               break;
             case error.POSITION_UNAVAILABLE:
               errorMessage = 'Location unavailable on this device. Try demo mode or manual entry.';
@@ -1215,13 +1266,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           console.log('📤 Starting sketch photo save for property:', editingProperty.id);
           const uploadedPhotoPath = await saveSketchPhoto(editingProperty.id);
           if (uploadedPhotoPath) {
-            console.log('✅ Sketch photo uploaded successfully, updating property...');
-            // Update the property with the new sketch photo path
-            await propertiesApi.updateProperty(editingProperty.id, {
-              sketch_photo: uploadedPhotoPath,
-              sketch_photo_captured_at: new Date().toISOString(),
-              edit_comment: formData.edit_comment // Include edit comment to pass validation
-            } as any); // Type assertion to bypass Property interface limitation
+            console.log('✅ Sketch photo uploaded successfully via Base64 endpoint');
           } else {
             console.warn('⚠️ Sketch photo upload failed, but continuing with property update');
             toast.warning('Sketch photo upload failed, but property was updated successfully.');
@@ -1254,12 +1299,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             console.log('📤 Starting sketch photo save for new property:', response.data.property.id);
             const uploadedPhotoPath = await saveSketchPhoto(response.data.property.id);
             if (uploadedPhotoPath) {
-              console.log('✅ Sketch photo uploaded successfully, updating new property...');
-              // Update the property with the sketch photo path
-              await propertiesApi.updateProperty(response.data.property.id, {
-                sketch_photo: uploadedPhotoPath,
-                sketch_photo_captured_at: new Date().toISOString()
-              });
+              console.log('✅ Sketch photo uploaded successfully via Base64 endpoint');
             } else {
               console.warn('⚠️ Sketch photo upload failed for new property, but property was created successfully');
               toast.warning('Sketch photo upload failed, but property was created successfully.');
@@ -2050,6 +2090,43 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       🎯 Enable Demo Mode (Test with Pune Coordinates)
                     </Button>
                   </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      onClick={() => {
+                        setLocationError(null);
+                        toast.info('Location error cleared. Try capturing GPS again.');
+                      }}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🔄 Clear Location Error & Retry
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={async () => {
+                        setLocationLoading(true);
+                        const granted = await requestLocationPermission();
+                        setLocationLoading(false);
+                        if (granted) {
+                          toast.success('Location permission granted! Try capturing GPS now.');
+                          setLocationError(null);
+                        } else {
+                          toast.error('Location permission still denied. Please check browser settings.');
+                        }
+                      }}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🔐 Request Location Permission
+                    </Button>
+                  </Grid>
                 </Grid>
                 
                 {/* Location Status */}
@@ -2060,6 +2137,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       Ensure you're outdoors with clear sky view for best accuracy
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      <strong>Mobile Tip:</strong> Make sure location services are enabled in your device settings
                     </Typography>
                   </Alert>
                 )}
@@ -2125,6 +2205,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       You can still enter coordinates and address manually
                     </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      <strong>Mobile Help:</strong> Check browser settings → Site Settings → Location → Allow
+                    </Typography>
                   </Alert>
                 )}
                 
@@ -2141,6 +2224,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Typography>
                   <Typography variant="body2">
                     • <strong>Manual Entry:</strong> You can always enter coordinates manually
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    <strong>📱 Mobile GPS Troubleshooting:</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    • Enable Location Services in device settings
+                  </Typography>
+                  <Typography variant="body2">
+                    • Allow location access when browser prompts
+                  </Typography>
+                  <Typography variant="body2">
+                    • Ensure you're outdoors with clear sky view
                   </Typography>
                   <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                     GPS works best outdoors with clear sky view. Address lookup uses free OpenStreetMap service.
