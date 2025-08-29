@@ -26,7 +26,8 @@ import {
   Dashboard,
   Home,
   Add,
-  Person
+  Person,
+  AdminPanelSettings
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import UserProfileDropdown from '../Common/UserProfileDropdown';
@@ -65,7 +66,10 @@ const DashboardLayout: React.FC = () => {
   const mobileMenuItems = [
     { text: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
     { text: 'Properties', path: '/properties', icon: <Home /> },
-    ...(user?.role === 'field_executive' ? [{ text: 'New Survey', path: '/survey', icon: <Add /> }] : [])
+    ...(user?.role === 'field_executive' ? [{ text: 'New Survey', path: '/survey', icon: <Add /> }] : []),
+    ...(user && ['admin', 'municipal_officer', 'engineer'].includes(user.role) 
+      ? [{ text: 'Admin', path: '/admin', icon: <AdminPanelSettings /> }] 
+      : [])
   ];
 
   return (
@@ -100,6 +104,11 @@ const DashboardLayout: React.FC = () => {
                     New Survey
                   </Button>
                 )}
+                {user && ['admin', 'municipal_officer', 'engineer'].includes(user.role) && (
+                  <Button color="inherit" onClick={() => navigate('/admin')}>
+                    Admin
+                  </Button>
+                )}
               </ButtonGroup>
               
               <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
@@ -123,7 +132,7 @@ const DashboardLayout: React.FC = () => {
           <IconButton
             color="inherit"
             onClick={handleProfileClick}
-            sx={{
+            sx={{ 
               p: 1,
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
