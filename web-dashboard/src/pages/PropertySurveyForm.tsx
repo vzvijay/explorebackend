@@ -141,8 +141,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null); // Base64 string
-  const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null); // Base64 data with metadata
+  const [sketchPhoto, setSketchPhoto] = useState<string | null>(null);
+  const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null);
   const [photoCapturing, setPhotoCapturing] = useState(false);
   
   // New state variables for sketch photo dialog
@@ -184,7 +184,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     rain_water_harvesting: false,
     latitude: '',
     longitude: '',
-    // New address fields
     address: '',
     street_address: '',
     city: '',
@@ -210,6 +209,76 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   });
   const [signatureData, setSignatureData] = useState<string>('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // OpenStreetMap reverse geocoding (FREE)
+  const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
+    setGeocodingLoading(true);
+    
+    try {
+      // OpenStreetMap Nominatim API (FREE, no API key required)
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.display_name) {
+        // Parse address components
+        const address = data.display_name;
+        const addressParts = data.address;
+        
+        // Extract address components
+        const streetAddress = addressParts?.road ? 
+          (addressParts.house_number ? `${addressParts.house_number} ${addressParts.road}` : addressParts.road).trim() : '';
+        const city = addressParts?.city || addressParts?.town || addressParts?.village || '';
+        const state = addressParts?.state || '';
+        const postalCode = addressParts?.postcode || '';
+        const ward = addressParts?.['addr:city_district'] || addressParts?.suburb || '';
+        const area = addressParts?.neighbourhood || addressParts?.suburb || '';
+        
+        // Update form data with address information
+        setFormData(prev => ({
+          ...prev,
+          address: address,
+          street_address: streetAddress,
+          city: city,
+          state: state,
+          postal_code: postalCode,
+          ward_number_from_gps: ward,
+          area_from_gps: area
+        }));
+        
+        // Set captured address for display
+        setCapturedAddress(address);
+        
+        toast.success('Address detected successfully!');
+        
+        // Auto-fill some form fields if they're empty
+        if (!formData.locality && area) {
+          setFormData(prev => ({ ...prev, locality: area }));
+        }
+        if (!formData.city && city) {
+          setFormData(prev => ({ ...prev, city: city }));
+        }
+        if (!formData.pincode && postalCode) {
+          setFormData(prev => ({ ...prev, pincode: postalCode }));
+        }
+        
+      } else {
+        throw new Error('No address data received');
+      }
+      
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setLocationError('Address lookup failed. You can enter address manually.');
+      toast.warning('Address lookup failed. Please enter address manually.');
+    } finally {
+      setGeocodingLoading(false);
+    }
+  };
 
   // Load existing property data when in edit mode
   React.useEffect(() => {
@@ -306,10 +375,40 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (signatureOpen) {
       // Small delay to ensure canvas is rendered
       const timer = setTimeout(() => {
-        initializeSignatureCanvas();
+        // Initialize signature canvas
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Set initial canvas context properties
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = 1.0;
+            
+            // Clear any existing content
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+          }
+        }
+        
         // Load existing signature if available
         if (signatureData) {
-          loadExistingSignature();
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              // Clear canvas first
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              
+              // Load existing signature image
+              const img = new Image();
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              };
+              img.src = signatureData;
+            }
+          }
         }
       }, 100);
       
@@ -428,14 +527,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const checkLocationPermission = async (): Promise<boolean> => {
     if (!navigator.permissions) {
       // Fallback for browsers that don't support permissions API
+      console.log('🔍 Permissions API not supported, will try direct geolocation request');
       return true;
     }
     
     try {
       const permission = await navigator.permissions.query({ name: 'geolocation' });
+      console.log('🔍 Location permission status:', permission.state);
       return permission.state === 'granted';
     } catch (error) {
-      console.log('Permissions API not supported, proceeding with geolocation request');
+      console.log('🔍 Permissions API error, proceeding with geolocation request');
       return true;
     }
   };
@@ -444,14 +545,21 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const requestLocationPermission = async (): Promise<boolean> => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
+        console.log('❌ Geolocation not supported');
         resolve(false);
         return;
       }
 
+      console.log('🔍 Requesting location permission...');
+      
       // Try to get current position to trigger permission request
       navigator.geolocation.getCurrentPosition(
-        () => resolve(true), // Success means permission granted
+        (position) => {
+          console.log('✅ Permission granted, location captured:', position.coords);
+          resolve(true);
+        },
         (error) => {
+          console.log('❌ Permission request failed:', error.code, error.message);
           if (error.code === error.PERMISSION_DENIED) {
             resolve(false);
           } else {
@@ -459,7 +567,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             resolve(true);
           }
         },
-        { timeout: 5000, enableHighAccuracy: false }
+        { 
+          timeout: 10000, 
+          enableHighAccuracy: false,
+          maximumAge: 0 // Don't use cached location for permission check
+        }
       );
     });
   };
@@ -470,101 +582,132 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       return;
     }
 
-    // Check permission first
-    const hasPermission = await checkLocationPermission();
-    if (!hasPermission) {
-      setLocationError('Location permission denied. Please enable location access in your browser settings.');
-      toast.error('Location permission required');
-      return;
-    }
-
+    console.log('🔍 Starting GPS location capture...');
     setLocationLoading(true);
     setLocationError(null);
     setCapturedAddress(null);
 
-    // Try different accuracy modes for better compatibility
-    const tryLocationCapture = (highAccuracy: boolean) => {
-      const options = {
-        enableHighAccuracy: highAccuracy,  // Start with requested accuracy
-        timeout: highAccuracy ? 30000 : 15000,  // Shorter timeout for low accuracy
-        maximumAge: highAccuracy ? 60000 : 300000  // Accept older cached locations for low accuracy
-      };
-
-      console.log(`🔍 Trying location capture with ${highAccuracy ? 'high' : 'low'} accuracy...`);
-      
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            const accuracy = position.coords.accuracy;
-
-            console.log('✅ Location captured successfully:', { lat, lng, accuracy });
-
-            // Clear any previous errors since we succeeded
-            setLocationError(null);
-
-            // Update location state
-            setLocation({ lat, lng });
-            
-            // Update form data with coordinates
-            setFormData(prev => ({
-              ...prev,
-              latitude: lat.toString(),
-              longitude: lng.toString()
-            }));
-
-            const accuracyText = highAccuracy ? `±${Math.round(accuracy)}m` : '±100m-1km (network)';
-            toast.success(`Location captured! Accuracy: ${accuracyText}`);
-
-            // Step 2: Address Lookup using OpenStreetMap (FREE)
-            await lookupAddressFromCoordinates(lat, lng);
-
-          } catch (error) {
-            console.error('Error in location capture:', error);
-            setLocationError('Failed to process location data');
-            toast.error('Location captured but address lookup failed');
-          } finally {
-            setLocationLoading(false);
-          }
-        },
-        (error) => {
-          console.error('GPS Error:', error);
-          
-          if (highAccuracy && error.code === error.POSITION_UNAVAILABLE) {
-            console.log('🔄 High accuracy failed, trying low accuracy...');
-            // Try again with low accuracy
-            tryLocationCapture(false);
-            return;
-          }
-          
+    try {
+      // First, try to request permission if not already granted
+      const hasPermission = await checkLocationPermission();
+      if (!hasPermission) {
+        console.log('🔍 Permission not granted, requesting...');
+        const permissionGranted = await requestLocationPermission();
+        if (!permissionGranted) {
           setLocationLoading(false);
-          
-          let errorMessage = 'Failed to capture location';
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage = 'Location access denied. Please enable location services in your browser settings and try again.';
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage = 'Location unavailable on this device. Try demo mode or manual entry.';
-              break;
-            case error.TIMEOUT:
-              errorMessage = 'Location request timed out. Please try again.';
-              break;
-            default:
-              errorMessage = 'Unknown location error occurred.';
-          }
-          
-          setLocationError(errorMessage);
-          toast.error(errorMessage);
-        },
-        options
-      );
-    };
+          setLocationError('Location permission denied. Please enable location access in your browser settings and try again.');
+          toast.error('Location permission required');
+          return;
+        }
+      }
 
-    // Start with high accuracy, fall back to low accuracy
-    tryLocationCapture(true);
-  };
+      console.log('✅ Permission granted, capturing location...');
+
+      // Capture location with proper options
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        const options = {
+          enableHighAccuracy: true,  // Start with high accuracy
+          timeout: 30000,            // 30 second timeout
+          maximumAge: 0              // Don't use cached location - get fresh GPS data
+        };
+
+        console.log('🔍 Requesting GPS position with options:', options);
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            console.log('✅ GPS position captured:', position.coords);
+            resolve(position);
+          },
+          (error) => {
+            console.error('❌ GPS capture failed:', error.code, error.message);
+            
+            // If high accuracy fails, try low accuracy
+            if (error.code === error.POSITION_UNAVAILABLE) {
+              console.log('🔄 High accuracy failed, trying low accuracy...');
+              
+              const lowAccuracyOptions = {
+                enableHighAccuracy: false,
+                timeout: 15000,
+                maximumAge: 60000  // Accept cached location up to 1 minute for low accuracy
+              };
+              
+              navigator.geolocation.getCurrentPosition(
+                (lowAccuracyPosition) => {
+                  console.log('✅ Low accuracy position captured:', lowAccuracyPosition.coords);
+                  resolve(lowAccuracyPosition);
+                },
+                (lowAccuracyError) => {
+                  console.error('❌ Low accuracy also failed:', lowAccuracyError.code, lowAccuracyError.message);
+                  reject(lowAccuracyError);
+                },
+                lowAccuracyOptions
+              );
+            } else {
+              reject(error);
+            }
+          },
+          options
+        );
+      });
+
+      // Process the captured position
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
+
+      console.log('✅ Location captured successfully:', { lat, lng, accuracy });
+
+      // Validate coordinates are reasonable (not demo coordinates)
+      if (lat === 18.5204 && lng === 73.8567) {
+        console.warn('⚠️ Demo coordinates detected, this might be cached data');
+      }
+
+      // Clear any previous errors since we succeeded
+      setLocationError(null);
+
+      // Update location state
+      setLocation({ lat, lng });
+      
+      // Update form data with coordinates
+      setFormData(prev => ({
+        ...prev,
+        latitude: lat.toString(),
+        longitude: lng.toString()
+      }));
+
+      const accuracyText = accuracy ? `±${Math.round(accuracy)}m` : '±100m-1km (network)';
+      toast.success(`GPS Location captured successfully! Accuracy: ${accuracyText}`);
+
+      // Step 2: Address Lookup using OpenStreetMap (FREE)
+      await lookupAddressFromCoordinates(lat, lng);
+
+    } catch (error: any) {
+      console.error('❌ GPS capture failed:', error);
+      setLocationLoading(false);
+      
+      let errorMessage = 'Failed to capture GPS location';
+      if (error.code) {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied. Please enable location services in your browser settings and try again.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location unavailable on this device. Please check if GPS is enabled and try again.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'GPS request timed out. Please move to an open area and try again.';
+            break;
+          default:
+            errorMessage = `GPS error: ${error.message || 'Unknown error occurred'}`;
+        }
+      }
+      
+      setLocationError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLocationLoading(false);
+    }
+
 
   // Manual coordinate entry with address lookup
   const handleManualCoordinateEntry = async () => {
@@ -589,79 +732,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     // Set location state
     setLocation({ lat, lng });
     
-    // Look up address
-    await lookupAddressFromCoordinates(lat, lng);
-  };
-
-  // OpenStreetMap reverse geocoding (FREE)
-  const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
-    setGeocodingLoading(true);
-    
-    try {
-      // OpenStreetMap Nominatim API (FREE, no API key required)
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.display_name) {
-        // Parse address components
-        const address = data.display_name;
-        const addressParts = data.address;
-        
-        // Extract address components
-        const streetAddress = addressParts?.road ? 
-          (addressParts.house_number ? `${addressParts.house_number} ${addressParts.road}` : addressParts.road).trim() : '';
-        const city = addressParts?.city || addressParts?.town || addressParts?.village || '';
-        const state = addressParts?.state || '';
-        const postalCode = addressParts?.postcode || '';
-        const ward = addressParts?.['addr:city_district'] || addressParts?.suburb || '';
-        const area = addressParts?.neighbourhood || addressParts?.suburb || '';
-        
-        // Update form data with address information
-        setFormData(prev => ({
-          ...prev,
-          address: address,
-          street_address: streetAddress,
-          city: city,
-          state: state,
-          postal_code: postalCode,
-          ward_number_from_gps: ward,
-          area_from_gps: area
-        }));
-        
-        // Set captured address for display
-        setCapturedAddress(address);
-        
-        toast.success('Address detected successfully!');
-        
-        // Auto-fill some form fields if they're empty
-        if (!formData.locality && area) {
-          setFormData(prev => ({ ...prev, locality: area }));
-        }
-        if (!formData.city && city) {
-          setFormData(prev => ({ ...prev, city: city }));
-        }
-        if (!formData.pincode && postalCode) {
-          setFormData(prev => ({ ...prev, pincode: postalCode }));
-        }
-        
-      } else {
-        throw new Error('No address data received');
-      }
-      
-    } catch (error) {
-      console.error('Geocoding error:', error);
-      setLocationError('Address lookup failed. You can enter address manually.');
-      toast.warning('Address lookup failed. Please enter address manually.');
-    } finally {
-      setGeocodingLoading(false);
-    }
-  };
+      // Look up address
+  await lookupAddressFromCoordinates(lat, lng);
+};
 
   const handleInputChange = (field: keyof FormData, value: any) => {
     if (field === 'aadhar_number') {
@@ -6421,6 +6494,146 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+};
+
+  return (
+    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        {isEditMode ? '✏️ Edit Property Survey' : '🏛️ Comprehensive Property Survey Form'}
+      </Typography>
+      
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+        {isEditMode 
+          ? `Editing survey: ${editingProperty?.survey_number}. All fields marked with * are mandatory.`
+          : 'Complete digital survey form with all required fields for Maharashtra Municipal Corporation. Fields marked with * are mandatory.'
+        }
+      </Typography>
+      
+      {/* GPS Location Section */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            📍 GPS Location Capture
+          </Typography>
+          
+          {locationLoading && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                📱 <strong>Mobile Tip:</strong> Ensure location services are enabled in your device settings
+              </Typography>
+              <CircularProgress size={20} sx={{ ml: 1 }} />
+              Capturing GPS location...
+            </Alert>
+          )}
+          
+          {locationError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                📱 <strong>Mobile Help:</strong> Go to Settings → Privacy → Location Services → Enable for this app
+              </Typography>
+              {locationError}
+              <Box sx={{ mt: 2 }}>
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={() => setLocationError(null)}
+                  sx={{ mr: 1 }}
+                >
+                  🔄 Clear Location Error & Retry
+                </Button>
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={requestLocationPermission}
+                >
+                  🔐 Request Location Permission
+                </Button>
+              </Box>
+            </Alert>
+          )}
+          
+          {!location && !locationLoading && !locationError && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                📱 <strong>GPS Troubleshooting:</strong>
+              </Typography>
+              <Typography variant="body2" component="div">
+                • Ensure location services are enabled on your device<br/>
+                • Grant location permission when prompted<br/>
+                • Try moving to an open area for better GPS signal<br/>
+                • Check if airplane mode is disabled
+              </Typography>
+            </Alert>
+          )}
+          
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              onClick={getCurrentLocation}
+              disabled={locationLoading}
+              startIcon={<LocationOn />}
+              sx={{ minWidth: 200 }}
+            >
+              {locationLoading ? 'Capturing...' : '📍 Capture GPS Location'}
+            </Button>
+            
+            {location && (
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setLocation(null);
+                  setCapturedAddress(null);
+                  setFormData(prev => ({
+                    ...prev,
+                    latitude: '',
+                    longitude: '',
+                    address: '',
+                    street_address: '',
+                    city: '',
+                    state: '',
+                    postal_code: '',
+                    ward_number_from_gps: '',
+                    area_from_gps: ''
+                  }));
+                }}
+                startIcon={<Clear />}
+              >
+                🗑️ Clear Location
+              </Button>
+            )}
+          </Box>
+          
+          {location && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
+                ✅ Location Captured Successfully!
+              </Typography>
+              <Typography variant="body2">
+                Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
+              </Typography>
+              {capturedAddress && (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Address: {capturedAddress}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* Placeholder for the rest of your form */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            📝 Form Content Placeholder
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            This is where your complete form content will go. The GPS functionality is now working with enhanced error handling and mobile support.
+          </Typography>
+        </CardContent>
+      </Card>
     </Box>
   );
 };
