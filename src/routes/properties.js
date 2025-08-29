@@ -190,7 +190,78 @@ const propertyUpdateValidation = [
   body('carpet_area')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Carpet area must be a positive number')
+    .withMessage('Carpet area must be a positive number'),
+  
+  // Additional fields that frontend sends during updates
+  body('latitude')
+    .optional()
+    .isFloat({ min: -90, max: 90 }),
+  body('longitude')
+    .optional()
+    .isFloat({ min: -180, max: 180 }),
+  body('signature_data')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('owner_tenant_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('assessment_year')
+    .optional()
+    .isInt({ min: 2020, max: 2030 }),
+  body('estimated_tax')
+    .optional()
+    .isFloat({ min: 0 }),
+  body('property_use_details')
+    .optional()
+    .isObject(),
+  body('construction_type')
+    .optional()
+    .isIn(['rcc', 'load_bearing', 'tin_patra', 'kaccha']),
+  body('construction_year')
+    .optional()
+    .isInt({ min: 1900, max: new Date().getFullYear() }),
+  body('number_of_floors')
+    .optional()
+    .isInt({ min: 1, max: 20 }),
+  body('building_permission')
+    .optional()
+    .isBoolean(),
+  body('bp_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('bp_date')
+    .optional()
+    .isISO8601(),
+  body('water_connection')
+    .optional()
+    .isIn([0, 1, 2, 3]),
+  body('water_connection_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('water_connection_date')
+    .optional()
+    .isISO8601(),
+  body('electricity_connection')
+    .optional()
+    .isBoolean(),
+  body('electricity_connection_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('sewage_connection')
+    .optional()
+    .isBoolean(),
+  body('solar_panel')
+    .optional()
+    .isBoolean(),
+  body('rain_water_harvesting')
+    .optional()
+    .isBoolean(),
+  body('remarks')
+    .optional()
+    .isLength({ max: 1000 }),
+  body('edit_comment')
+    .optional()
+    .isLength({ max: 1000 })
 ];
 
 // Review validation
