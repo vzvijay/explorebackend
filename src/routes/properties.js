@@ -189,7 +189,37 @@ const propertyValidation = [
     .isFloat({ min: 0 }),
   body('remarks')
     .optional()
-    .isLength({ max: 1000 })
+    .isLength({ max: 1000 }),
+  
+  // Address fields from GPS lookup
+  body('address')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Address cannot exceed 500 characters'),
+  body('street_address')
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage('Street address cannot exceed 200 characters'),
+  body('city')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('state')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('State cannot exceed 100 characters'),
+  body('postal_code')
+    .optional()
+    .isLength({ max: 10 })
+    .withMessage('Postal code cannot exceed 10 characters'),
+  body('ward_number_from_gps')
+    .optional()
+    .isLength({ max: 50 })
+    .withMessage('Ward number cannot exceed 50 characters'),
+  body('area_from_gps')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('Area cannot exceed 100 characters')
 ];
 
 // Property update validation (partial)
@@ -371,6 +401,7 @@ router.get('/', authenticateToken, getProperties);
 router.post('/', 
   authenticateToken, 
   authorizeRoles('field_executive'), 
+  cleanEmptyStrings,
   propertyValidation, 
   createProperty
 );
