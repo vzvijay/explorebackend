@@ -622,61 +622,28 @@ const PropertiesPage: React.FC = () => {
                 <Typography variant="h6" gutterBottom>
                   📸 Sketch Photo
                 </Typography>
-                {(selectedProperty.sketch_photo || selectedProperty.sketch_photo_base64) ? (
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Box 
-                      sx={{ 
-                        cursor: 'pointer',
-                        display: 'inline-block',
-                        border: '1px solid #ddd',
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                          boxShadow: 2
-                        }
-                      }}
-                      onClick={() => setSketchPhotoModal(true)}
-                    >
-                      <SketchPhotoDisplay
-                        sketchPhotoPath={selectedProperty.sketch_photo}
-                        sketchPhotoBase64={selectedProperty.sketch_photo_base64}
-                        capturedAt={selectedProperty.sketch_photo_captured_at || null}
-                        surveyNumber={selectedProperty.survey_number}
-                        ownerName={selectedProperty.owner_name}
-                        showMetadata={false}
-                        size="medium"
-                        downloadable={false}
-                      />
-                    </Box>
-                    
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                      Survey: {selectedProperty.survey_number} | Owner: {selectedProperty.owner_name}
+                {(selectedProperty.sketch_photo) ? (
+                  <Box sx={{ textAlign: 'center', mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      📸 Sketch Photo
                     </Typography>
-                    
-                    {selectedProperty.sketch_photo_captured_at && (
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Captured: {new Date(selectedProperty.sketch_photo_captured_at).toLocaleString('en-IN', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Typography>
-                    )}
-                    
-                    <Typography variant="caption" color="primary" display="block" sx={{ mt: 1 }}>
-                      Click to view larger
-                    </Typography>
+                    <SketchPhotoDisplay
+                      sketchPhotoPath={selectedProperty.sketch_photo}
+                      sketchPhotoBase64={selectedProperty.sketch_photo ? {
+                        data: selectedProperty.sketch_photo,
+                        size: selectedProperty.sketch_photo.length,
+                        type: 'image/png',
+                        filename: 'sketch_photo.png'
+                      } : null}
+                      capturedAt={selectedProperty.sketch_photo_captured_at || null}
+                      surveyNumber={selectedProperty.survey_number}
+                      ownerName={selectedProperty.owner_name}
+                      showMetadata={true}
+                      size="medium"
+                      downloadable={true}
+                    />
                   </Box>
-                ) : (
-                  <Box sx={{ textAlign: 'center', py: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No sketch photo available
-                    </Typography>
-                  </Box>
-                )}
+                ) : null}
               </Grid>
 
               {/* Remarks */}
@@ -739,11 +706,16 @@ const PropertiesPage: React.FC = () => {
           Sketch Photo - {selectedProperty?.survey_number}
         </DialogTitle>
         <DialogContent>
-          {(selectedProperty?.sketch_photo || selectedProperty?.sketch_photo_base64) && (
+          {(selectedProperty?.sketch_photo) && (
             <Box sx={{ textAlign: 'center' }}>
               <SketchPhotoDisplay
                 sketchPhotoPath={selectedProperty.sketch_photo}
-                sketchPhotoBase64={selectedProperty.sketch_photo_base64}
+                sketchPhotoBase64={selectedProperty.sketch_photo ? {
+                  data: selectedProperty.sketch_photo,
+                  size: selectedProperty.sketch_photo.length,
+                  type: 'image/png',
+                  filename: 'sketch_photo.png'
+                } : null}
                 capturedAt={selectedProperty.sketch_photo_captured_at || null}
                 surveyNumber={selectedProperty.survey_number}
                 ownerName={selectedProperty.owner_name}
