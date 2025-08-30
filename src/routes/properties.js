@@ -102,10 +102,14 @@ const propertyValidation = [
       if (value === '' || value === null || value === undefined) {
         return true; // Allow empty/null values
       }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
       // If value exists, validate as ISO date
       return require('validator').isISO8601(value);
     })
-    .withMessage('Valid ISO date format required (YYYY-MM-DD)'),
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   
   // Area Measurements
   body('plot_area')
@@ -136,10 +140,14 @@ const propertyValidation = [
       if (value === '' || value === null || value === undefined) {
         return true; // Allow empty/null values
       }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
       // If value exists, validate as ISO date
       return require('validator').isISO8601(value);
     })
-    .withMessage('Valid ISO date format required (YYYY-MM-DD)'),
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   body('electricity_connection')
     .optional()
     .isBoolean(),
