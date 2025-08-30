@@ -13,6 +13,17 @@ const {
 
 const router = express.Router();
 
+// Middleware to clean empty strings before validation
+const cleanEmptyStrings = (req, res, next) => {
+  // Clean empty strings for optional fields
+  Object.keys(req.body).forEach(key => {
+    if (req.body[key] === '') {
+      req.body[key] = null;
+    }
+  });
+  next();
+};
+
 // Property validation rules
 const propertyValidation = [
   // Basic Information
@@ -163,10 +174,42 @@ const propertyValidation = [
 
 // Property update validation (partial)
 const propertyUpdateValidation = [
+  // Basic Information
+  body('survey_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('old_mc_property_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('register_no')
+    .optional()
+    .isLength({ max: 50 }),
   body('owner_name')
     .optional()
     .isLength({ min: 2, max: 100 })
     .withMessage('Owner name must be between 2 and 100 characters'),
+  body('owner_father_name')
+    .optional()
+    .isLength({ max: 100 }),
+  body('owner_phone')
+    .optional()
+    .isLength({ max: 15 }),
+  body('owner_email')
+    .optional()
+    .isEmail()
+    .withMessage('Valid email is required'),
+  body('aadhar_number')
+    .optional()
+    .matches(/^\d{4}-\d{4}-\d{4}$/)
+    .withMessage('Aadhar number must be in format 1234-5678-9012'),
+  
+  // Address
+  body('house_number')
+    .optional()
+    .isLength({ max: 20 }),
+  body('street_name')
+    .optional()
+    .isLength({ max: 100 }),
   body('locality')
     .optional()
     .notEmpty()
@@ -175,6 +218,16 @@ const propertyUpdateValidation = [
     .optional()
     .isInt({ min: 1 })
     .withMessage('Valid ward number is required'),
+  body('pincode')
+    .optional()
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('Pincode must be 6 digits'),
+  body('zone')
+    .optional()
+    .isIn(['A', 'B', 'C', 'D']),
+  
+  // Property Details
   body('property_type')
     .optional()
     .isIn(['residential', 'commercial', 'industrial', 'mixed', 'institutional'])
@@ -190,7 +243,133 @@ const propertyUpdateValidation = [
   body('carpet_area')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Carpet area must be a positive number')
+    .withMessage('Carpet area must be a positive number'),
+  
+  // Additional fields that frontend sends during updates
+  body('latitude')
+    .optional()
+    .isFloat({ min: -90, max: 90 }),
+  body('longitude')
+    .optional()
+    .isFloat({ min: -180, max: 180 }),
+  body('signature_data')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('owner_tenant_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('sketch_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('assessment_year')
+    .optional()
+    .isInt({ min: 2020, max: 2030 }),
+  body('estimated_tax')
+    .optional()
+    .isFloat({ min: 0 }),
+  body('property_use_details')
+    .optional()
+    .isObject(),
+  body('construction_type')
+    .optional()
+    .isIn(['rcc', 'load_bearing', 'tin_patra', 'kaccha']),
+  body('construction_year')
+    .optional()
+    .isInt({ min: 1900, max: new Date().getFullYear() }),
+  body('number_of_floors')
+    .optional()
+    .isInt({ min: 1, max: 20 }),
+  body('building_permission')
+    .optional()
+    .isBoolean(),
+  body('bp_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('bp_date')
+    .optional()
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
+  body('water_connection')
+    .optional()
+    .isIn([0, 1, 2, 3]),
+  body('water_connection_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('water_connection_date')
+    .optional()
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
+  body('electricity_connection')
+    .optional()
+    .isBoolean(),
+  body('electricity_connection_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('sewage_connection')
+    .optional()
+    .isBoolean(),
+  body('solar_panel')
+    .optional()
+    .isBoolean(),
+  body('rain_water_harvesting')
+    .optional()
+    .isBoolean(),
+  body('remarks')
+    .optional()
+    .isLength({ max: 1000 }),
+  body('edit_comment')
+    .optional()
+    .isLength({ max: 1000 }),
+  
+  // Address fields from GPS lookup - Add missing validation
+  body('address')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Address cannot exceed 500 characters'),
+  body('street_address')
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage('Street address cannot exceed 200 characters'),
+  body('city')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('state')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('State cannot exceed 100 characters'),
+  body('postal_code')
+    .optional()
+    .isLength({ max: 10 })
+    .withMessage('Postal code cannot exceed 10 characters'),
+  body('ward_number_from_gps')
+    .optional()
+    .isLength({ max: 50 })
+    .withMessage('Ward number cannot exceed 50 characters'),
+  body('area_from_gps')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('Area cannot exceed 100 characters')
 ];
 
 // Review validation
@@ -217,6 +396,7 @@ router.get('/', authenticateToken, getProperties);
 router.post('/', 
   authenticateToken, 
   authorizeRoles('field_executive'), 
+  cleanEmptyStrings,
   propertyValidation, 
   createProperty
 );
@@ -233,6 +413,7 @@ router.get('/:id',
 router.put('/:id', 
   authenticateToken, 
   param('id').isUUID().withMessage('Valid property ID is required'),
+  cleanEmptyStrings, // Apply the middleware here
   propertyUpdateValidation,
   checkPropertyAccess,
   updateProperty
