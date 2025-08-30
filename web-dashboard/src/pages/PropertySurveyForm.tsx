@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -157,7 +157,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
   const [signatureData, setSignatureData] = useState<string>('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-
+  
   // Form data state
   const [formData, setFormData] = useState<FormData>({
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -221,6 +221,136 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     bathrooms: []
   });
 
+  // Data conversion helper functions for edit mode
+  const safeDateConversion = (isoDate: string | null | undefined): string => {
+    if (!isoDate) return '';
+    try {
+      return new Date(isoDate).toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
+  const safeNumberToString = (value: number | string | null | undefined): string => {
+    if (value === null || value === undefined) return '';
+    return value.toString();
+  };
+
+  const safeBooleanConversion = (value: any): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    if (typeof value === 'number') return value !== 0;
+    return false;
+  };
+
+  // useEffect to populate form data when editing property
+  useEffect(() => {
+    if (editingProperty && isEditMode) {
+      console.log('🔄 Populating form with editing property data:', editingProperty);
+      
+      // Populate form data with fetched property data
+      setFormData(prev => ({
+        ...prev,
+        // Basic information fields
+        survey_number: editingProperty.survey_number || '',
+        old_mc_property_number: editingProperty.old_mc_property_number || '',
+        register_no: editingProperty.register_no || '',
+        owner_name: editingProperty.owner_name || '',
+        owner_father_name: editingProperty.owner_father_name || '',
+        owner_phone: editingProperty.owner_phone || '',
+        owner_email: editingProperty.owner_email || '',
+        aadhar_number: editingProperty.aadhar_number || '',
+        house_number: editingProperty.house_number || '',
+        street_name: editingProperty.street_name || '',
+        locality: editingProperty.locality || '',
+        ward_number: safeNumberToString(editingProperty.ward_number),
+        pincode: editingProperty.pincode || '',
+        zone: editingProperty.zone || 'A',
+        property_type: editingProperty.property_type || '',
+        construction_type: editingProperty.construction_type || '',
+        construction_year: safeNumberToString(editingProperty.construction_year),
+        number_of_floors: editingProperty.number_of_floors || 1,
+        building_permission: safeBooleanConversion(editingProperty.building_permission),
+        bp_number: editingProperty.bp_number || '',
+        bp_date: safeDateConversion(editingProperty.bp_date),
+        plot_area: safeNumberToString(editingProperty.plot_area),
+        built_up_area: safeNumberToString(editingProperty.built_up_area),
+        carpet_area: safeNumberToString(editingProperty.carpet_area),
+        water_connection: editingProperty.water_connection || 0,
+        water_connection_number: editingProperty.water_connection_number || '',
+        water_connection_date: safeDateConversion(editingProperty.water_connection_date),
+        electricity_connection: safeBooleanConversion(editingProperty.electricity_connection),
+        electricity_connection_number: editingProperty.electricity_connection_number || '',
+        sewage_connection: safeBooleanConversion(editingProperty.sewage_connection),
+        solar_panel: safeBooleanConversion(editingProperty.solar_panel),
+        rain_water_harvesting: safeBooleanConversion(editingProperty.rain_water_harvesting),
+        latitude: safeNumberToString(editingProperty.latitude),
+        longitude: safeNumberToString(editingProperty.longitude),
+        address: editingProperty.address || '',
+        street_address: editingProperty.street_address || '',
+        city: editingProperty.city || '',
+        state: editingProperty.state || '',
+        postal_code: editingProperty.postal_code || '',
+        ward_number_from_gps: editingProperty.ward_number_from_gps || '',
+        area_from_gps: editingProperty.area_from_gps || '',
+        remarks: editingProperty.remarks || '',
+        edit_comment: editingProperty.edit_comment || ''
+      }));
+
+      // Set GPS location state if coordinates exist
+      if (editingProperty.latitude && editingProperty.longitude) {
+        const lat = parseFloat(editingProperty.latitude);
+        const lng = parseFloat(editingProperty.longitude);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          setLocation({ lat, lng });
+          console.log('📍 GPS location set from editing property:', { lat, lng });
+        }
+      }
+
+      // Set address from GPS data if available
+      if (editingProperty.address) {
+        setCapturedAddress(editingProperty.address);
+        console.log('🏠 Address set from editing property:', editingProperty.address);
+      }
+
+      // Set property use details if available
+      if (editingProperty.property_use_details) {
+        setPropertyUse(editingProperty.property_use_details);
+        console.log('🏗️ Property use details set from editing property:', editingProperty.property_use_details);
+      }
+
+      // Set signature data if available
+      if (editingProperty.signature_data) {
+        setSignatureData(editingProperty.signature_data);
+        console.log('✍️ Signature data set from editing property');
+      }
+
+      // Set owner photo if available
+      if (editingProperty.owner_tenant_photo) {
+        setCapturedPhoto(editingProperty.owner_tenant_photo);
+        console.log('📸 Owner photo set from editing property');
+      }
+
+      // Set sketch photo if available
+      if (editingProperty.sketch_photo) {
+        // ✅ SIMPLIFIED: sketch_photo is now a simple base64 string like owner_tenant_photo
+        // Convert base64 string to displayable format for edit mode
+        const dataUrl = `data:image/png;base64,${editingProperty.sketch_photo}`;
+        setSketchPhoto(dataUrl);
+        // Create Base64ImageData structure for compatibility
+        setSketchPhotoBase64({
+          data: editingProperty.sketch_photo,
+          size: editingProperty.sketch_photo.length,
+          type: 'image/png',
+          filename: 'sketch_photo.png'
+        });
+        console.log('🎨 Sketch photo set from editing property (simplified)');
+      }
+
+      console.log('✅ Form data populated successfully for edit mode');
+    }
+  }, [editingProperty, isEditMode]);
+
 
   // Utility functions
   const validateAadhar = (aadhar: string): boolean => {
@@ -271,201 +401,427 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // GPS Functions - Enhanced Implementation with Fallbacks
-  const getCurrentLocation = async () => {
-    console.log('📍 GPS: Starting location capture...');
+  // Enhanced GPS implementation with mobile-specific optimizations
+  const getCurrentLocation = () => {
+    // Check if geolocation is supported
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    // Check if we're on HTTPS (required for geolocation)
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      toast.error('GPS requires HTTPS connection. Please access via https://');
+      return;
+    }
+
+    console.log('🔍 Starting GPS location capture...');
+    console.log('Browser:', navigator.userAgent);
+    console.log('Protocol:', window.location.protocol);
+    console.log('Hostname:', window.location.hostname);
+
     setLocationLoading(true);
     setLocationError(null);
-    
-    // Clear any previous errors
-    setLocationError(null);
-    
-    try {
-      // Check if geolocation is supported
-      if (!navigator.geolocation) {
-        throw new Error('Geolocation is not supported by this browser');
-      }
+    setCapturedAddress(null);
 
-      console.log('📍 GPS: Geolocation supported, attempting to get location...');
-      
-      // Try multiple GPS strategies
-      let position: GeolocationPosition | null = null;
-      
-      // Strategy 1: High accuracy with longer timeout
-      try {
-        console.log('📍 GPS: Strategy 1 - High accuracy GPS...');
-        position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          const options = {
-            enableHighAccuracy: true,
-            timeout: 45000, // 45 seconds for high accuracy
-            maximumAge: 0
-          };
+    // Check permission status first (if supported)
+    if ('permissions' in navigator) {
+      navigator.permissions.query({ name: 'geolocation' })
+        .then((permissionStatus) => {
+          console.log('📍 Geolocation permission status:', permissionStatus.state);
           
-          console.log('📍 GPS: High accuracy options:', options);
+          if (permissionStatus.state === 'denied') {
+            toast.error('Location permission denied. Please enable location access in browser settings.');
+            setLocationLoading(false);
+            return;
+          }
           
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              console.log('📍 GPS: High accuracy success!', pos);
-              resolve(pos);
-            },
-            (error) => {
-              console.log('📍 GPS: High accuracy failed:', error);
-              reject(error);
-            },
-            options
-          );
+          // Proceed with location request
+          performLocationRequest();
+        })
+        .catch(() => {
+          console.log('⚠️ Permission API not supported, proceeding with location request');
+          performLocationRequest();
         });
-      } catch (error: any) {
-        console.log('📍 GPS: High accuracy failed, trying low accuracy...');
-        
-        // Strategy 2: Low accuracy (faster, works indoors)
-        try {
-          position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            const options = {
-              enableHighAccuracy: false, // Low accuracy for better success rate
-              timeout: 30000,
-              maximumAge: 60000 // Accept cached position up to 1 minute old
-            };
-            
-            console.log('📍 GPS: Low accuracy options:', options);
-            
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                console.log('📍 GPS: Low accuracy success!', pos);
-                resolve(pos);
-              },
-              (error) => {
-                console.log('📍 GPS: Low accuracy failed:', error);
-                reject(error);
-              },
-              options
-            );
-          });
-        } catch (lowAccuracyError: any) {
-          console.log('📍 GPS: Low accuracy also failed:', lowAccuracyError);
-          throw lowAccuracyError; // Throw the last error
-        }
-      }
-
-      if (!position) {
-        throw new Error('Failed to get location after trying all strategies');
-      }
-
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      const accuracy = position.coords.accuracy;
-      
-      console.log('📍 GPS: Coordinates captured - Lat:', lat, 'Lng:', lng, 'Accuracy:', accuracy, 'meters');
-      
-      // Update location state
-      setLocation({ lat, lng });
-      
-      // Update form data
-      setFormData(prev => ({
-        ...prev,
-        latitude: lat.toString(),
-        longitude: lng.toString()
-      }));
-      
-      console.log('📍 GPS: Form data updated, looking up address...');
-      
-      // Look up address
-      await lookupAddressFromCoordinates(lat, lng);
-      
-      console.log('📍 GPS: Location capture completed successfully!');
-      
-      // Show success message with accuracy info
-      if (accuracy <= 10) {
-        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m`);
-      } else if (accuracy <= 100) {
-        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m (Good)`);
-      } else {
-        toast.success(`GPS location captured! Accuracy: ${Math.round(accuracy)}m (Fair - consider moving outdoors)`);
-      }
-      
-    } catch (error: any) {
-      console.error('📍 GPS: Error in getCurrentLocation:', error);
-      
-      let errorMessage = 'Failed to get location. Please try again.';
-      let userTip = '';
-      
-      if (error.code === 1) {
-        errorMessage = 'Location access denied. Please enable location services and grant permission in your browser settings.';
-        userTip = 'Go to browser settings → Privacy → Location → Allow';
-      } else if (error.code === 2) {
-        errorMessage = 'Location unavailable. This usually means poor GPS signal or you\'re indoors.';
-        userTip = 'Try moving outdoors, near a window, or wait a few minutes for GPS to acquire signal';
-      } else if (error.code === 3) {
-        errorMessage = 'Location request timed out. GPS signal is weak.';
-        userTip = 'Try moving outdoors or wait longer for GPS to acquire signal';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setLocationError(`${errorMessage} ${userTip}`);
-      toast.error(errorMessage);
-      
-      // Show specific mobile tips
-      if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-        toast.info('📱 Mobile Tip: Ensure Location Services are ON in your device settings');
-      }
-    } finally {
-      setLocationLoading(false);
+    } else {
+      // Fallback for browsers without Permissions API
+      performLocationRequest();
     }
   };
 
+  const performLocationRequest = () => {
+    // Progressive timeout strategy - start with longer timeout for mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    // iOS Safari often needs more time
+    const timeout = isIOS ? 20000 : (isMobile ? 15000 : 10000);
+    
+    console.log(`📱 Device type - Mobile: ${isMobile}, iOS: ${isIOS}, Timeout: ${timeout}ms`);
+
+    // First attempt with high accuracy
+      navigator.geolocation.getCurrentPosition(
+      (position) => {
+        handleLocationSuccess(position, 'high-accuracy');
+      },
+      (error) => {
+        console.warn('🔄 High accuracy failed, trying low accuracy mode...');
+        console.error('High accuracy error:', error.code, error.message);
+        
+        // Fallback to low accuracy mode
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            handleLocationSuccess(position, 'low-accuracy');
+          },
+          (error) => {
+            handleLocationError(error);
+          },
+          {
+            enableHighAccuracy: false,  // Use network/WiFi positioning
+            timeout: timeout,
+            maximumAge: 60000          // Accept 1-minute old cached location
+          }
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: timeout,
+        maximumAge: 0
+      }
+    );
+  };
+
+  const handleLocationSuccess = (position: any, mode: string) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+    const timestamp = new Date(position.timestamp);
+
+    console.log(`✅ GPS position captured (${mode}):`, { 
+      lat, 
+      lng, 
+      accuracy: `${Math.round(accuracy)}m`,
+      timestamp: timestamp.toISOString(),
+      altitude: position.coords.altitude,
+      heading: position.coords.heading,
+      speed: position.coords.speed
+    });
+
+    // Clear any previous errors
+    setLocationError(null);
+
+            // Update location state
+            setLocation({ lat, lng });
+            
+            // Update form data with coordinates
+            setFormData(prev => ({
+              ...prev,
+              latitude: lat.toString(),
+      longitude: lng.toString(),
+      gps_accuracy: accuracy ? Math.round(accuracy).toString() : 'unknown',
+      gps_timestamp: timestamp.toISOString()
+    }));
+
+    // Determine accuracy description
+    let accuracyText;
+    if (accuracy) {
+      if (accuracy <= 10) {
+        accuracyText = `±${Math.round(accuracy)}m (Excellent)`;
+      } else if (accuracy <= 50) {
+        accuracyText = `±${Math.round(accuracy)}m (Good)`;
+      } else if (accuracy <= 100) {
+        accuracyText = `±${Math.round(accuracy)}m (Fair)`;
+      } else {
+        accuracyText = `±${Math.round(accuracy)}m (Poor)`;
+      }
+    } else {
+      accuracyText = 'Unknown accuracy';
+    }
+
+    toast.success(`📍 GPS Location captured! Accuracy: ${accuracyText} (${mode})`);
+
+    // Address lookup
+    lookupAddressFromCoordinates(lat, lng);
+    
+            setLocationLoading(false);
+  };
+
+  const handleLocationError = (error: any) => {
+    console.error('❌ GPS capture failed completely:', error.code, error.message);
+    
+    let errorMessage = 'Failed to capture GPS location';
+    let troubleshootingTip = '';
+    
+    if (error.code) {
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+          errorMessage = 'Location access denied by user or browser settings';
+          troubleshootingTip = 'Please enable location services in your browser settings and refresh the page.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+          errorMessage = 'Location services unavailable';
+          troubleshootingTip = 'Please check if GPS/Location Services are enabled on your device and try again.';
+              break;
+            case error.TIMEOUT:
+          errorMessage = 'GPS request timed out';
+          troubleshootingTip = 'Please ensure you have a clear view of the sky or move to an area with better signal.';
+              break;
+            default:
+          errorMessage = `GPS error: ${error.message || 'Unknown error'}`;
+          troubleshootingTip = 'Please try refreshing the page or using manual coordinate entry.';
+      }
+          }
+          
+    setLocationError(`${errorMessage}. ${troubleshootingTip}`);
+          toast.error(errorMessage);
+    
+    // Show additional troubleshooting info
+    setTimeout(() => {
+      toast.info(troubleshootingTip);
+    }, 2000);
+    
+    setLocationLoading(false);
+  };
+
+  // Enhanced address lookup with error handling and retries
   const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
     setGeocodingLoading(true);
     
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    const attemptLookup = async () => {
+      try {
+        // Use different zoom levels based on retry count
+        const zoom = retryCount === 0 ? 18 : retryCount === 1 ? 16 : 14;
+        
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=${zoom}&addressdetails=1&accept-language=en`;
+        
+        console.log(`🌍 Address lookup attempt ${retryCount + 1}, URL:`, url);
+        
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'YourAppName/1.0' // Nominatim requires User-Agent
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('📍 Geocoding response:', data);
+        
+        if (data.display_name) {
+          processAddressData(data);
+          return true;
+        } else {
+          throw new Error('No address found in response');
+        }
+      } catch (error) {
+        console.error(`Geocoding attempt ${retryCount + 1} failed:`, error);
+        
+        retryCount++;
+        if (retryCount < maxRetries) {
+          console.log(`Retrying in 1 second... (attempt ${retryCount + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return attemptLookup();
+        } else {
+          throw error;
+        }
+      }
+    };
+    
     try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.display_name) {
-        const address = data.display_name;
-        const addressParts = data.address;
-        
-        const streetAddress = addressParts?.road ? 
-          (addressParts.house_number ? `${addressParts.house_number}, ${addressParts.road}` : addressParts.road) : '';
-        
-        const city = addressParts?.city || addressParts?.town || addressParts?.village || '';
-        const state = addressParts?.state || '';
-        const postalCode = addressParts?.postcode || '';
-        const wardNumber = addressParts?.['addr:postcode'] || '';
-        const area = addressParts?.suburb || addressParts?.neighbourhood || '';
-        
-        setCapturedAddress(address);
-        setFormData(prev => ({
-          ...prev,
-          address,
-          street_address: streetAddress,
-          city,
-          state,
-          postal_code: postalCode,
-          ward_number_from_gps: wardNumber,
-          area_from_gps: area
-        }));
-      }
+      await attemptLookup();
     } catch (error) {
-      console.error('Geocoding error:', error);
-      toast.error('Failed to lookup address from coordinates');
+      console.error('All geocoding attempts failed:', error);
+      toast.error('Failed to lookup address. Location coordinates saved successfully.');
+      
+      // Set a basic address format
+      setCapturedAddress(`Location: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setFormData(prev => ({
+        ...prev,
+        address: `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      }));
     } finally {
       setGeocodingLoading(false);
     }
   };
 
-  const handleManualCoordinateEntry = () => {
-    if (formData.latitude && formData.longitude) {
-      const lat = parseFloat(formData.latitude);
-      const lng = parseFloat(formData.longitude);
-      lookupAddressFromCoordinates(lat, lng);
+  const processAddressData = (data: any) => {
+    const address = data.display_name;
+    const addressParts = data.address;
+    
+    console.log('📍 Processing address data:', addressParts);
+    
+    // Extract address components with fallbacks
+    const streetNumber = addressParts?.house_number || '';
+    const streetName = addressParts?.road || addressParts?.street || '';
+    const streetAddress = streetNumber && streetName ? 
+      `${streetNumber}, ${streetName}` : 
+      (streetName || addressParts?.pedestrian || addressParts?.path || '');
+    
+    const neighborhood = addressParts?.neighbourhood || addressParts?.suburb || '';
+    const city = addressParts?.city || addressParts?.town || addressParts?.village || 
+               addressParts?.municipality || addressParts?.county || '';
+    const state = addressParts?.state || addressParts?.province || 
+                 addressParts?.region || '';
+    const country = addressParts?.country || '';
+    const postalCode = addressParts?.postcode || '';
+    
+    // Indian specific fields
+    const wardNumber = addressParts?.['addr:postcode'] || addressParts?.postcode || '';
+    const area = neighborhood || addressParts?.residential || '';
+    
+    setCapturedAddress(address);
+    
+    setFormData(prev => ({
+      ...prev,
+      address,
+      street_address: streetAddress,
+      neighborhood,
+      city,
+      state,
+      country,
+      postal_code: postalCode,
+      ward_number_from_gps: wardNumber,
+      area_from_gps: area
+    }));
+    
+    toast.success('📍 Address lookup completed successfully!');
+  };
+
+  // Manual coordinate entry with address lookup
+  const handleManualCoordinateEntry = async () => {
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      toast.error('Please enter valid coordinates');
+      return;
     }
+    
+    if (lat < -90 || lat > 90) {
+      toast.error('Latitude must be between -90 and 90');
+      return;
+    }
+    
+    if (lng < -180 || lng > 180) {
+      toast.error('Longitude must be between -180 and 180');
+      return;
+    }
+    
+    // Set location state
+    setLocation({ lat, lng });
+    
+    // Look up address
+    await lookupAddressFromCoordinates(lat, lng);
+  };
+
+  // Test GPS with detailed diagnostics
+  const testGPSFunctionality = () => {
+    console.log('🔍 Testing GPS functionality...');
+    console.log('Navigator geolocation support:', !!navigator.geolocation);
+    console.log('Current protocol:', window.location.protocol);
+    console.log('User agent:', navigator.userAgent);
+    
+    if (!navigator.geolocation) {
+      toast.error('Geolocation not supported by this browser');
+      return;
+    }
+    
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      toast.error('GPS requires HTTPS. Current protocol: ' + window.location.protocol);
+      return;
+    }
+    
+    toast.info('Testing GPS... Check console for detailed logs');
+    
+    // Test with very permissive settings
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('✅ GPS Test Success:', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          altitude: position.coords.altitude,
+          timestamp: new Date(position.timestamp).toISOString()
+        });
+        toast.success(`GPS test successful! Accuracy: ±${Math.round(position.coords.accuracy)}m`);
+      },
+      (error) => {
+        console.error('❌ GPS Test Failed:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          PERMISSION_DENIED: error.PERMISSION_DENIED,
+          POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
+          TIMEOUT: error.TIMEOUT
+        });
+        toast.error(`GPS test failed: ${error.message} (Code: ${error.code})`);
+      },
+      {
+        enableHighAccuracy: false,  // Less demanding for testing
+        timeout: 30000,             // Longer timeout for testing
+        maximumAge: 300000          // Accept 5-minute old cache for testing
+      }
+    );
+  };
+
+  // Debug information helper
+  const getGPSDebugInfo = () => {
+    const info = {
+      geolocationSupport: !!navigator.geolocation,
+      protocol: window.location.protocol,
+      hostname: window.location.hostname,
+      userAgent: navigator.userAgent,
+      isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+      isAndroid: /Android/i.test(navigator.userAgent),
+      permissionsAPI: 'permissions' in navigator,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('📊 GPS Debug Info:', info);
+    return info;
+  };
+
+  // Enhanced demo mode with more realistic behavior
+  const enableDemoMode = () => {
+    const demoLocations = [
+      { lat: 18.5204, lng: 73.8567, name: 'Pune, Maharashtra, India' },
+      { lat: 19.0760, lng: 72.8777, name: 'Mumbai, Maharashtra, India' },
+      { lat: 12.9716, lng: 77.5946, name: 'Bangalore, Karnataka, India' },
+      { lat: 28.7041, lng: 77.1025, name: 'Delhi, India' }
+    ];
+    
+    const randomLocation = demoLocations[Math.floor(Math.random() * demoLocations.length)];
+    
+    // Add some random variation to make it more realistic
+    const latVariation = (Math.random() - 0.5) * 0.01; // ±0.005 degrees (~500m)
+    const lngVariation = (Math.random() - 0.5) * 0.01;
+    
+    const finalLat = randomLocation.lat + latVariation;
+    const finalLng = randomLocation.lng + lngVariation;
+    
+      setFormData(prev => ({
+        ...prev,
+      latitude: finalLat.toString(),
+      longitude: finalLng.toString(),
+      gps_accuracy: '25',
+      gps_timestamp: new Date().toISOString()
+    }));
+    
+    setLocation({ lat: finalLat, lng: finalLng });
+    setCapturedAddress(randomLocation.name);
+    
+    toast.success(`🎭 Demo mode enabled! Using ${randomLocation.name} with realistic GPS variation.`);
+    
+    // Simulate address lookup delay
+    setTimeout(() => {
+      lookupAddressFromCoordinates(finalLat, finalLng);
+    }, 1000);
   };
 
 
@@ -654,24 +1010,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (!sketchPhotoBase64) return null;
     
     try {
-      const response = await fetch(`/api/sketch-photo/${propertyId}/base64`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sketch_photo_base64: sketchPhotoBase64
-        })
+      // ✅ SIMPLIFIED: Return base64 data directly since sketch_photo is now handled like owner_tenant_photo
+      // No separate API call needed - sketch_photo will be sent with property data
+      console.log('✅ Sketch photo data ready for property submission:', {
+        hasData: !!sketchPhotoBase64,
+        dataLength: sketchPhotoBase64.data?.length || 0
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        return result.uploadedPhotoPath;
-      } else {
-        throw new Error('Failed to save sketch photo');
-      }
+      // Return the base64 data string for the sketch_photo field
+      return sketchPhotoBase64.data;
     } catch (error) {
-      console.error('Error saving sketch photo:', error);
+      console.error('Error preparing sketch photo:', error);
       return null;
     }
   };
@@ -683,24 +1032,24 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     
     // Clear canvas and set up drawing context when dialog opens
     setTimeout(() => {
-      const canvas = canvasRef.current;
-      if (canvas) {
+    const canvas = canvasRef.current;
+    if (canvas) {
         console.log('✍️ Signature: Setting up canvas...');
         
         // Set canvas dimensions
         canvas.width = 400;
         canvas.height = 200;
         
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
           // Clear the canvas
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           
           // Set default drawing style
-          ctx.strokeStyle = '#000000'; // Black color
+        ctx.strokeStyle = '#000000'; // Black color
           ctx.lineWidth = 3; // Line thickness
-          ctx.lineCap = 'round'; // Rounded line ends
-          ctx.lineJoin = 'round'; // Rounded line joins
+        ctx.lineCap = 'round'; // Rounded line ends
+        ctx.lineJoin = 'round'; // Rounded line joins
           
           console.log('✍️ Signature: Canvas setup complete');
         }
@@ -950,7 +1299,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
     
     if (activeStep === 5) {
-      if (!sketchPhoto) {
+      if (!sketchPhoto && !sketchPhotoBase64) {
         toast.error('Please capture a sketch photo before proceeding');
         return;
       }
@@ -978,6 +1327,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         property_use_details: propertyUse,
         signature_data: signatureData,
         owner_tenant_photo: capturedPhoto,
+        sketch_photo: sketchPhotoBase64?.data || null,
         property_type: formData.property_type as any,
         construction_type: formData.construction_type as any
       };
@@ -1025,6 +1375,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         property_use_details: propertyUse,
         signature_data: signatureData,
         owner_tenant_photo: capturedPhoto,
+        sketch_photo: sketchPhotoBase64?.data || null,
         property_type: formData.property_type as any,
         construction_type: formData.construction_type as any
       };
@@ -1035,16 +1386,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         response = await propertiesApi.updateProperty(editingProperty.id, apiData);
         toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
-        if (sketchPhotoBase64) {
-          console.log('📤 Starting sketch photo save for property:', editingProperty.id);
-          const uploadedPhotoPath = await saveSketchPhoto(editingProperty.id);
-          if (uploadedPhotoPath) {
-            console.log('✅ Sketch photo uploaded successfully via Base64 endpoint');
-          } else {
-            console.warn('⚠️ Sketch photo upload failed, but continuing with property update');
-            toast.warning('Sketch photo upload failed, but property was updated successfully.');
-          }
-        }
+        // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
+        // No separate API call needed - sketch_photo is included in apiData
         
         try {
           const submitResponse = await propertiesApi.submitProperty(editingProperty.id);
@@ -1061,18 +1404,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       } else {
         response = await propertiesApi.createProperty(apiData);
         
+        // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
+        // No separate API call needed - sketch_photo is included in apiData
+        
         if (response.data && response.data.property && response.data.property.id) {
-          if (sketchPhotoBase64) {
-            console.log('📤 Starting sketch photo save for new property:', response.data.property.id);
-            const uploadedPhotoPath = await saveSketchPhoto(response.data.property.id);
-            if (uploadedPhotoPath) {
-              console.log('✅ Sketch photo uploaded successfully via Base64 endpoint');
-            } else {
-              console.warn('⚠️ Sketch photo upload failed for new property, but property was created successfully');
-              toast.warning('Sketch photo upload failed, but property was created successfully.');
-            }
-          }
-          
           await propertiesApi.submitProperty(response.data.property.id);
           toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
         }
@@ -1842,13 +2177,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       variant="outlined"
                       color="secondary"
                       onClick={() => {
-                        console.log('📍 GPS Debug Info:');
-                        console.log('- navigator.geolocation:', !!navigator.geolocation);
-                        console.log('- Current form data:', formData);
-                        console.log('- Location state:', location);
-                        console.log('- Location loading:', locationLoading);
-                        console.log('- Location error:', locationError);
-                        toast.info('GPS debug info logged to console. Press F12 to view.');
+                        getGPSDebugInfo();
+                        toast.info('GPS debug info logged to console');
                       }}
                       fullWidth
                     >
@@ -1856,69 +2186,96 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Button>
                   </Grid>
                   
-                  {/* Manual GPS Input */}
-                  <Grid item xs={12}>
-                    <Divider sx={{ my: 2 }} />
-                    <Typography variant="subtitle2" gutterBottom>
-                      📍 Manual GPS Input (if automatic fails)
-                    </Typography>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={4}>
-                        <TextField
-                          fullWidth
-                          label="Manual Latitude"
-                          value={formData.latitude}
-                          onChange={(e) => handleInputChange('latitude', e.target.value)}
-                          placeholder="18.5204"
-                          size="small"
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={4}>
-                        <TextField
-                          fullWidth
-                          label="Manual Longitude"
-                          value={formData.longitude}
-                          onChange={(e) => handleInputChange('longitude', e.target.value)}
-                          placeholder="73.8567"
-                          size="small"
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={4}>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={handleManualCoordinateEntry}
-                          disabled={!formData.latitude || !formData.longitude}
-                          fullWidth
-                          sx={{ height: '40px' }}
-                        >
-                          🔍 Lookup Address
-                        </Button>
-                      </Grid>
+                  {/* GPS Testing Buttons */}
+                  <Grid item xs={12} sm={6}>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      onClick={testGPSFunctionality}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🧪 Test GPS
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Button
+                      variant="outlined"
+                      color="success"
+                      onClick={enableDemoMode}
+                      fullWidth
+                      sx={{ mt: 1 }}
+                    >
+                      🎯 Demo Mode
+                    </Button>
+                  </Grid>
+                </Grid>
+                
+                {/* Manual GPS Input */}
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle2" gutterBottom>
+                    📍 Manual GPS Input (if automatic fails)
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Manual Latitude"
+                        value={formData.latitude}
+                        onChange={(e) => handleInputChange('latitude', e.target.value)}
+                        placeholder="18.5204"
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Manual Longitude"
+                        value={formData.longitude}
+                        onChange={(e) => handleInputChange('longitude', e.target.value)}
+                        placeholder="73.8567"
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={handleManualCoordinateEntry}
+                        disabled={!formData.latitude || !formData.longitude}
+                        fullWidth
+                        sx={{ height: '40px' }}
+                      >
+                        🔍 Lookup Address
+                      </Button>
                     </Grid>
                   </Grid>
+                </Grid>
+              </Paper>
                 </Grid>
                 
                 {/* Location Status */}
                 {locationLoading && (
-                  <Alert severity="info" sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2">
                       📡 Acquiring GPS signal... Please wait (may take 30 seconds)
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       Ensure you're outdoors with clear sky view for best accuracy
                     </Typography>
-                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      <strong>Mobile Tip:</strong> Make sure location services are enabled in your device settings
-                    </Typography>
-                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      <strong>Browser Tip:</strong> Check browser console (F12) for detailed GPS logs
+                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                  <strong>Mobile Tip:</strong> Make sure location services are enabled in your device settings
+                </Typography>
+                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                  <strong>Browser Tip:</strong> Check browser console (F12) for detailed GPS logs
                     </Typography>
                   </Alert>
                 )}
                 
                 {geocodingLoading && (
-                  <Alert severity="info" sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2">
                       🔍 Looking up address from coordinates...
                     </Typography>
@@ -1926,24 +2283,24 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 )}
                 
                 {location && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
+              <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2" gutterBottom>
                       <strong>✅ GPS Location Captured Successfully!</strong>
                     </Typography>
-                    <Typography variant="body2">
-                      Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
+                <Typography variant="body2">
+                  Latitude: {location.lat.toFixed(6)}, Longitude: {location.lng.toFixed(6)}
                     </Typography>
-                    {capturedAddress && (
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        Address: {capturedAddress}
-                      </Typography>
-                    )}
+                {capturedAddress && (
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Address: {capturedAddress}
+                    </Typography>
+                )}
                   </Alert>
                 )}
                 
                 {/* Error Display */}
                 {locationError && (
-                  <Alert severity="warning" sx={{ mt: 2 }}>
+              <Alert severity="warning" sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2" gutterBottom>
                       <strong>⚠️ Location Error:</strong>
                     </Typography>
@@ -1952,14 +2309,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       You can still enter coordinates and address manually
-                    </Typography>
-                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      <strong>Troubleshooting:</strong> Check browser console (F12) for detailed error logs
-                    </Typography>
-                  </Alert>
-                )}
-              </Paper>
-            </Grid>
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                  <strong>Troubleshooting:</strong> Check browser console (F12) for detailed error logs
+                  </Typography>
+                </Alert>
+            )}
             
             {/* Photo Capture */}
             <Grid item xs={12}>
@@ -2105,43 +2460,43 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       fullWidth
                       sx={{ p: 3 }}
                     >
-                      {sketchPhoto ? '📸 Retake Sketch Photo' : '📸 Capture Sketch Photo'}
+                      {(sketchPhoto || sketchPhotoBase64) ? '📸 Retake Sketch Photo' : '📸 Capture Sketch Photo'}
                     </Button>
                   </Grid>
                   
-                  {sketchPhoto && (
-                    <Grid item xs={12} sm={6}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <img 
-                          src={sketchPhoto} 
+                                    {(sketchPhoto || sketchPhotoBase64) && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ textAlign: 'center' }}>
+                          <img 
+                            src={sketchPhoto || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
                           alt="Sketch" 
                           style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
                         />
                         <Typography variant="caption" display="block">
-                          Sketch photo captured successfully
-                        </Typography>
-                        <Button
-                          variant="outlined"
+                          {sketchPhoto ? 'Sketch photo captured successfully' : 'Existing sketch photo loaded'}
+                          </Typography>
+                          <Button
+                            variant="outlined"
                           color="error"
-                          size="small"
-                          startIcon={<Clear />}
-                          onClick={() => {
-                            setSketchPhoto(null);
+                            size="small"
+                            startIcon={<Clear />}
+                            onClick={() => {
+                              setSketchPhoto(null);
                             setSketchPhotoBase64(null);
-                          }}
-                          sx={{ mt: 1 }}
-                        >
+                            }}
+                            sx={{ mt: 1 }}
+                          >
                           Clear Photo
-                        </Button>
-                      </Box>
+                          </Button>
+                        </Box>
                     </Grid>
                   )}
                 </Grid>
                 
-                {sketchPhoto && (
+                {(sketchPhoto || sketchPhotoBase64) && (
                   <Alert severity="success" sx={{ mt: 2 }}>
                     <Typography variant="body2">
-                      <strong>✅ Sketch Photo Captured Successfully!</strong>
+                      <strong>✅ Sketch Photo {sketchPhoto ? 'Captured' : 'Loaded'} Successfully!</strong>
                     </Typography>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                       The sketch photo will be included in your survey submission. You can retake it anytime.
@@ -2174,7 +2529,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Typography>
                   <Typography variant="body2">
                     <strong>Survey Number:</strong> {formData.survey_number}
-                  </Typography>
+                      </Typography>
                   <Typography variant="body2">
                     <strong>Owner Name:</strong> {formData.owner_name}
                   </Typography>
@@ -2186,17 +2541,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Typography>
                 </CardContent>
               </Card>
-            </Grid>
-            
+                    </Grid>
+                    
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     🏠 Property Details
-                  </Typography>
+                        </Typography>
                   <Typography variant="body2">
                     <strong>Type:</strong> {formData.property_type}
-                  </Typography>
+                              </Typography>
                   <Typography variant="body2">
                     <strong>Construction:</strong> {formData.construction_type}
                   </Typography>
@@ -2208,7 +2563,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Typography>
                 </CardContent>
               </Card>
-            </Grid>
+                            </Grid>
             
             <Grid item xs={12} md={6}>
               <Card>
@@ -2226,21 +2581,21 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     <strong>Signature:</strong> {signatureData ? '✅ Captured' : '❌ Missing'}
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Sketch:</strong> {sketchPhoto ? '✅ Captured' : '❌ Missing'}
+                    <strong>Sketch:</strong> {(sketchPhoto || sketchPhotoBase64) ? '✅ Captured' : '❌ Missing'}
                   </Typography>
                 </CardContent>
               </Card>
-            </Grid>
-            
+                    </Grid>
+                    
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     🔌 Utilities
-                  </Typography>
+                        </Typography>
                   <Typography variant="body2">
                     <strong>Water:</strong> {formData.water_connection > 0 ? `${formData.water_connection} connection(s)` : 'No connection'}
-                  </Typography>
+                          </Typography>
                   <Typography variant="body2">
                     <strong>Electricity:</strong> {formData.electricity_connection ? '✅ Connected' : '❌ Not connected'}
                   </Typography>
@@ -2252,19 +2607,19 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             
             {/* Edit Comment for Edit Mode */}
             {isEditMode && editingProperty && editingProperty.survey_status !== 'draft' && (
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
                   label="Edit Comment *"
-                  multiline
-                  rows={3}
-                  value={formData.edit_comment}
+                        multiline
+                        rows={3}
+                        value={formData.edit_comment}
                   onChange={(e) => handleInputChange('edit_comment', e.target.value)}
                   placeholder="Please provide a reason for editing this survey..."
-                  required
+                        required
                   helperText="Edit comment is required for post-submission edits"
-                />
-              </Grid>
+                      />
+                    </Grid>
             )}
             
             {/* Validation Errors */}
@@ -2282,10 +2637,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     ))}
                   </ul>
                 </Alert>
-              </Grid>
+                  </Grid>
             )}
+            </Grid>
           </Grid>
-        </Grid>
         );
 
       default:
@@ -2301,23 +2656,23 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         <CardContent>
           <Typography variant="h4" gutterBottom align="center">
             {isEditMode ? '✏️ Edit Property Survey' : '🏠 New Property Survey'}
-          </Typography>
-          
-          {isEditMode && editingProperty && (
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="body2">
+      </Typography>
+      
+      {isEditMode && editingProperty && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
                 <strong>Editing Survey:</strong> {editingProperty.survey_number} | 
                 Status: {editingProperty.survey_status} | 
                 Created: {new Date(editingProperty.created_at).toLocaleDateString()}
-              </Typography>
-            </Alert>
-          )}
-          
+          </Typography>
+        </Alert>
+      )}
+
           {/* Stepper */}
           <Stepper activeStep={activeStep} orientation="horizontal" sx={{ mb: 4 }}>
             {steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
               </Step>
             ))}
           </Stepper>
@@ -2325,29 +2680,29 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           {/* Step Content */}
           <Box sx={{ mb: 4 }}>
             {renderStepContent(activeStep)}
-          </Box>
-          
+              </Box>
+              
           {/* Navigation Buttons */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Button
+                <Button
               disabled={activeStep === 0}
-              onClick={handleBack}
+                  onClick={handleBack}
               sx={{ mr: 1 }}
-            >
-              Back
-            </Button>
-            
+                >
+                  Back
+                </Button>
+                
             <Box>
               {activeStep === steps.length - 1 ? (
                 <>
-                  <Button
-                    variant="outlined"
-                    onClick={saveDraft}
-                    disabled={loading}
+                <Button
+                  variant="outlined"
+                  onClick={saveDraft}
+                  disabled={loading}
                     sx={{ mr: 1 }}
-                  >
-                    {loading ? <CircularProgress size={20} /> : 'Save Draft'}
-                  </Button>
+                >
+                  {loading ? <CircularProgress size={20} /> : 'Save Draft'}
+                </Button>
                   <Button
                     variant="contained"
                     onClick={submitSurvey}
@@ -2357,20 +2712,20 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     {loading ? 'Submitting...' : 'Submit Survey'}
                   </Button>
                 </>
-              ) : (
-                <Button
-                  variant="contained"
-                  onClick={handleNext}
+                ) : (
+                  <Button
+                    variant="contained"
+                    onClick={handleNext}
                   startIcon={<Save />}
-                >
-                  Next
-                </Button>
-              )}
-            </Box>
+                  >
+                    Next
+                  </Button>
+                )}
+              </Box>
           </Box>
         </CardContent>
       </Card>
-      
+
       {/* Photo Capture Dialog */}
       <Dialog 
         open={photoDialogOpen} 
@@ -2407,7 +2762,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   )}
                 </Button>
               </Grid>
-              
+                
               <Grid item xs={12} sm={6}>
                 <Button
                   variant="outlined"
@@ -2428,7 +2783,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 </Typography>
               </Alert>
             )}
-          </Box>
+                </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPhotoDialogOpen(false)}>
@@ -2452,10 +2807,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             <Typography variant="body1" gutterBottom>
               Position your sketch or drawing in front of the camera:
             </Typography>
-            
-            <Button
+                  
+                  <Button
               variant="contained"
-              startIcon={<PhotoCamera />}
+                    startIcon={<PhotoCamera />}
               onClick={captureSketchPhoto}
               disabled={sketchPhotoCapturing}
               fullWidth
@@ -2469,8 +2824,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               ) : (
                 '📸 Capture Sketch Photo'
               )}
-            </Button>
-            
+                  </Button>
+                  
             {sketchPhotoCapturing && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
@@ -2486,7 +2841,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* Signature Dialog */}
       <Dialog 
         open={signatureOpen} 
@@ -2504,37 +2859,37 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             </Typography>
             
             <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mb: 2 }}>
-              <canvas
-                ref={canvasRef}
-                width={400}
-                height={200}
+            <canvas
+              ref={canvasRef}
+              width={400}
+              height={200}
                 style={{ border: '1px solid #ddd', cursor: 'crosshair' }}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              />
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            />
             </Box>
             
-            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-              <Button
-                variant="outlined"
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                <Button
+                  variant="outlined"
                 onClick={clearSignatureFromForm}
                 startIcon={<Clear />}
-              >
+                >
                 Clear
-              </Button>
-              <Button
+                </Button>
+                <Button
                 variant="contained"
                 onClick={saveSignature}
                 startIcon={<Save />}
               >
                 Save Signature
-              </Button>
-            </Box>
+                </Button>
+              </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -2547,4 +2902,4 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   );
 };
 
-export default PropertySurveyForm;
+export default PropertySurveyForm; 
