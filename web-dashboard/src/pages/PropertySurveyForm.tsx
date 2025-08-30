@@ -1006,24 +1006,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
-  const saveSketchPhoto = async (propertyId: string): Promise<string | null> => {
-    if (!sketchPhotoBase64) return null;
-    
-    try {
-      // ✅ SIMPLIFIED: Return base64 data directly since sketch_photo is now handled like owner_tenant_photo
-      // No separate API call needed - sketch_photo will be sent with property data
-      console.log('✅ Sketch photo data ready for property submission:', {
-        hasData: !!sketchPhotoBase64,
-        dataLength: sketchPhotoBase64.data?.length || 0
-      });
-      
-      // Return the base64 data string for the sketch_photo field
-      return sketchPhotoBase64.data;
-    } catch (error) {
-      console.error('Error preparing sketch photo:', error);
-      return null;
-    }
-  };
+  // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data like owner_tenant_photo
+  // No separate API call needed - sketch_photo is included in apiData
 
 
   // Signature functions - Enhanced Implementation
