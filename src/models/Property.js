@@ -69,6 +69,16 @@ const Property = sequelize.define('Property', {
     allowNull: false
   },
   
+  // Zone Information
+  zone: {
+    type: DataTypes.CHAR(1),
+    allowNull: false,
+    defaultValue: 'A',
+    validate: {
+      is: /^[A-Z]$/  // Only A-Z allowed
+    }
+  },
+  
   // Property Details
   property_type: {
     type: DataTypes.ENUM('residential', 'commercial', 'industrial', 'mixed', 'institutional'),
@@ -182,6 +192,18 @@ const Property = sequelize.define('Property', {
     allowNull: true
   },
   
+  // Sketch Photo (Hand-drawn sketch - simplified like owner_tenant_photo)
+  sketch_photo: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Base64 encoded sketch photo data (same pattern as owner_tenant_photo)'
+  },
+  sketch_photo_captured_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when sketch photo was captured'
+  },
+  
   // Tax Assessment
   assessment_year: {
     type: DataTypes.INTEGER,
@@ -196,6 +218,37 @@ const Property = sequelize.define('Property', {
   survey_status: {
     type: DataTypes.ENUM('draft', 'submitted', 'under_review', 'approved', 'rejected'),
     defaultValue: 'draft'
+  },
+  
+  // Admin Approval Workflow
+  approval_status: {
+    type: DataTypes.ENUM('pending_approval', 'approved', 'rejected'),
+    defaultValue: 'pending_approval',
+    comment: 'Current approval status for admin workflow'
+  },
+  approved_by: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    comment: 'ID of admin user who approved/rejected the survey'
+  },
+  approved_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when survey was approved/rejected'
+  },
+  rejection_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Reason for rejection if survey was rejected'
+  },
+  admin_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Additional notes from admin during approval process'
   },
   
   // Additional Information
@@ -228,6 +281,32 @@ const Property = sequelize.define('Property', {
   survey_date: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  
+  // Edit Tracking for Always Editable System
+  last_edit_comment: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Comment required for post-submission edits'
+  },
+  last_edit_date: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Date of last edit'
+  },
+  last_edit_by: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    comment: 'User who made the last edit'
+  },
+  edit_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Number of times this property has been edited'
   }
 }, {
   tableName: 'properties',

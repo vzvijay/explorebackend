@@ -1,4 +1,4 @@
-const { Property, PropertyImage, User } = require('../models');
+const { Property, User } = require('../models');
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const sequelize = require('../database/config');
@@ -58,6 +58,7 @@ const getProperties = async (req, res) => {
       status,
       property_type,
       ward_number,
+      zone,
       surveyed_by,
       search
     } = req.query;
@@ -69,6 +70,7 @@ const getProperties = async (req, res) => {
     if (status) where.survey_status = status;
     if (property_type) where.property_type = property_type;
     if (ward_number) where.ward_number = ward_number;
+    if (zone) where.zone = zone;
     if (surveyed_by) where.surveyed_by = surveyed_by;
 
     // Search functionality
@@ -143,11 +145,8 @@ const getPropertyById = async (req, res) => {
           model: User,
           as: 'reviewer',
           attributes: ['first_name', 'last_name', 'employee_id']
-        },
-        {
-          model: PropertyImage,
-          as: 'images'
         }
+        // PropertyImage association removed to fix sketch photo data corruption
       ]
     });
 
@@ -172,7 +171,7 @@ const getPropertyById = async (req, res) => {
   }
 };
 
-// Update property
+// Update property (Always Editable System)
 const updateProperty = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -185,6 +184,7 @@ const updateProperty = async (req, res) => {
     }
 
     const { id } = req.params;
+    const { edit_comment, ...updateData } = req.body;
     const property = await Property.findByPk(id);
 
     if (!property) {
@@ -194,23 +194,32 @@ const updateProperty = async (req, res) => {
       });
     }
 
-    // Check if user can edit (field executives can only edit draft status)
+    // Always Editable System: Field executives can edit any status
     if (req.user.role === 'field_executive') {
-      if (property.survey_status !== 'draft') {
-        return res.status(403).json({
-          success: false,
-          message: 'Cannot edit submitted property'
-        });
-      }
+      // Check ownership
       if (property.surveyed_by !== req.user.id) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: 'Access denied - you can only edit your own surveys'
         });
       }
+
+      // Comment is mandatory for post-submission edits
+      if (property.survey_status !== 'draft' && !edit_comment) {
+        return res.status(400).json({
+          success: false,
+          message: 'Edit comment is mandatory for post-submission edits'
+        });
+      }
+
+      // Update edit tracking fields
+      updateData.last_edit_comment = edit_comment || null;
+      updateData.last_edit_date = new Date();
+      updateData.last_edit_by = req.user.id;
+      updateData.edit_count = (property.edit_count || 0) + 1;
     }
 
-    await property.update(req.body);
+    await property.update(updateData);
 
     res.json({
       success: true,
@@ -240,22 +249,47 @@ const submitProperty = async (req, res) => {
       });
     }
 
-    if (property.survey_status !== 'draft') {
-      return res.status(400).json({
-        success: false,
-        message: 'Property is already submitted'
+    // Always Editable System: Field executives can submit properties in any status
+    if (req.user.role === 'field_executive') {
+      // Check ownership
+      if (property.surveyed_by !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied - you can only submit your own surveys'
+        });
+      }
+
+      // For field executives, allow submission regardless of current status
+      await property.update({
+        survey_status: 'submitted',
+        approval_status: 'pending_approval'
+      });
+
+      res.json({
+        success: true,
+        message: 'Property submitted for review successfully',
+        data: { property }
+      });
+    } else {
+      // For other roles, maintain original logic
+      if (property.survey_status !== 'draft') {
+        return res.status(400).json({
+          success: false,
+          message: 'Property is already submitted'
+        });
+      }
+
+      await property.update({
+        survey_status: 'submitted',
+        approval_status: 'pending_approval'
+      });
+
+      res.json({
+        success: true,
+        message: 'Property submitted for review successfully',
+        data: { property }
       });
     }
-
-    await property.update({
-      survey_status: 'submitted'
-    });
-
-    res.json({
-      success: true,
-      message: 'Property submitted for review successfully',
-      data: { property }
-    });
 
   } catch (error) {
     console.error('Submit property error:', error);

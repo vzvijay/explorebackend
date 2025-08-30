@@ -13,9 +13,21 @@ const router = express.Router();
 // Login validation rules
 const loginValidation = [
   body('email')
-    .isEmail()
+    .notEmpty()
+    .withMessage('Email or username is required')
+    .custom((value) => {
+      // Accept both email format and username format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const usernameRegex = /^[a-zA-Z0-9._-]+$/;
+      
+      if (emailRegex.test(value) || usernameRegex.test(value)) {
+        return true;
+      }
+      
+      throw new Error('Please provide a valid email or username format');
+    })
     .normalizeEmail()
-    .withMessage('Please provide a valid email'),
+    .withMessage('Please provide a valid email or username'),
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
@@ -50,5 +62,7 @@ router.post('/login', loginValidation, login);
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, profileUpdateValidation, updateProfile);
 router.put('/change-password', authenticateToken, passwordChangeValidation, changePassword);
+
+
 
 module.exports = router; 

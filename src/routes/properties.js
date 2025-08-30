@@ -98,8 +98,18 @@ const propertyValidation = [
     .isLength({ max: 50 }),
   body('bp_date')
     .optional()
-    .isISO8601()
-    .withMessage('Valid date is required'),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   
   // Area Measurements
   body('plot_area')
@@ -120,14 +130,24 @@ const propertyValidation = [
   // Utility Connections
   body('water_connection')
     .optional()
-    .isIn([0, 1, 2, 3])
-    .withMessage('Water connection must be 0, 1, 2, or 3'),
+    .isIn([0, 1, 2, 3]),
   body('water_connection_number')
     .optional()
     .isLength({ max: 50 }),
   body('water_connection_date')
     .optional()
-    .isISO8601(),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   body('electricity_connection')
     .optional()
     .isBoolean(),
@@ -156,6 +176,9 @@ const propertyValidation = [
   body('owner_tenant_photo')
     .optional()
     .isLength({ max: 1000000 }),
+  body('sketch_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
   body('signature_data')
     .optional()
     .isLength({ max: 1000000 }),
@@ -169,7 +192,37 @@ const propertyValidation = [
     .isFloat({ min: 0 }),
   body('remarks')
     .optional()
-    .isLength({ max: 1000 })
+    .isLength({ max: 1000 }),
+  
+  // Address fields from GPS lookup
+  body('address')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Address cannot exceed 500 characters'),
+  body('street_address')
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage('Street address cannot exceed 200 characters'),
+  body('city')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('state')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('State cannot exceed 100 characters'),
+  body('postal_code')
+    .optional()
+    .isLength({ max: 10 })
+    .withMessage('Postal code cannot exceed 10 characters'),
+  body('ward_number_from_gps')
+    .optional()
+    .isLength({ max: 50 })
+    .withMessage('Ward number cannot exceed 50 characters'),
+  body('area_from_gps')
+    .optional()
+    .isLength({ max: 100 })
+    .withMessage('Area cannot exceed 100 characters')
 ];
 
 // Property update validation (partial)
@@ -413,7 +466,7 @@ router.get('/:id',
 router.put('/:id', 
   authenticateToken, 
   param('id').isUUID().withMessage('Valid property ID is required'),
-  cleanEmptyStrings, // Apply the middleware here
+  cleanEmptyStrings,
   propertyUpdateValidation,
   checkPropertyAccess,
   updateProperty
