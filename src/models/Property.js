@@ -192,16 +192,11 @@ const Property = sequelize.define('Property', {
     allowNull: true
   },
   
-  // Sketch Photo (Hand-drawn sketch before digital signature)
+  // Sketch Photo (Hand-drawn sketch - simplified like owner_tenant_photo)
   sketch_photo: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Path to hand-drawn sketch photo file (legacy support)'
-  },
-  sketch_photo_base64: {
     type: DataTypes.TEXT,
     allowNull: true,
-    comment: 'Base64 encoded sketch photo data'
+    comment: 'Base64 encoded sketch photo data (same pattern as owner_tenant_photo)'
   },
   sketch_photo_captured_at: {
     type: DataTypes.DATE,

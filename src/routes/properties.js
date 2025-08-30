@@ -176,6 +176,9 @@ const propertyValidation = [
   body('owner_tenant_photo')
     .optional()
     .isLength({ max: 1000000 }),
+  body('sketch_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
   body('signature_data')
     .optional()
     .isLength({ max: 1000000 }),
@@ -264,6 +267,9 @@ const propertyUpdateValidation = [
     .optional()
     .isLength({ max: 1000000 }),
   body('owner_tenant_photo')
+    .optional()
+    .isLength({ max: 1000000 }),
+  body('sketch_photo')
     .optional()
     .isLength({ max: 1000000 }),
   body('assessment_year')
