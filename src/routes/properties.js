@@ -262,7 +262,18 @@ const propertyUpdateValidation = [
     .isLength({ max: 50 }),
   body('bp_date')
     .optional()
-    .isISO8601(),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   body('water_connection')
     .optional()
     .isIn([0, 1, 2, 3]),
@@ -271,7 +282,18 @@ const propertyUpdateValidation = [
     .isLength({ max: 50 }),
   body('water_connection_date')
     .optional()
-    .isISO8601(),
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return true; // Allow empty/null values
+      }
+      // Check if it's a valid date string
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        return false; // Reject invalid date strings
+      }
+      // If value exists, validate as ISO date
+      return require('validator').isISO8601(value);
+    })
+    .withMessage('Valid ISO date format required (YYYY-MM-DD) or leave empty'),
   body('electricity_connection')
     .optional()
     .isBoolean(),
