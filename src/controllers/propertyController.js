@@ -1,4 +1,4 @@
-const { Property, PropertyImage, User } = require('../models');
+const { Property, User } = require('../models');
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const sequelize = require('../database/config');
@@ -145,11 +145,8 @@ const getPropertyById = async (req, res) => {
           model: User,
           as: 'reviewer',
           attributes: ['first_name', 'last_name', 'employee_id']
-        },
-        {
-          model: PropertyImage,
-          as: 'images'
         }
+        // PropertyImage association removed to fix sketch photo data corruption
       ]
     });
 
