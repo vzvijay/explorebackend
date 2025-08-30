@@ -227,10 +227,42 @@ const propertyValidation = [
 
 // Property update validation (partial)
 const propertyUpdateValidation = [
+  // Basic Information
+  body('survey_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('old_mc_property_number')
+    .optional()
+    .isLength({ max: 50 }),
+  body('register_no')
+    .optional()
+    .isLength({ max: 50 }),
   body('owner_name')
     .optional()
     .isLength({ min: 2, max: 100 })
     .withMessage('Owner name must be between 2 and 100 characters'),
+  body('owner_father_name')
+    .optional()
+    .isLength({ max: 100 }),
+  body('owner_phone')
+    .optional()
+    .isLength({ max: 15 }),
+  body('owner_email')
+    .optional()
+    .isEmail()
+    .withMessage('Valid email is required'),
+  body('aadhar_number')
+    .optional()
+    .matches(/^\d{4}-\d{4}-\d{4}$/)
+    .withMessage('Aadhar number must be in format 1234-5678-9012'),
+  
+  // Address
+  body('house_number')
+    .optional()
+    .isLength({ max: 20 }),
+  body('street_name')
+    .optional()
+    .isLength({ max: 100 }),
   body('locality')
     .optional()
     .notEmpty()
@@ -239,6 +271,16 @@ const propertyUpdateValidation = [
     .optional()
     .isInt({ min: 1 })
     .withMessage('Valid ward number is required'),
+  body('pincode')
+    .optional()
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('Pincode must be 6 digits'),
+  body('zone')
+    .optional()
+    .isIn(['A', 'B', 'C', 'D']),
+  
+  // Property Details
   body('property_type')
     .optional()
     .isIn(['residential', 'commercial', 'industrial', 'mixed', 'institutional'])
