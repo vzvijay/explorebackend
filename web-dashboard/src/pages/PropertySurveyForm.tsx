@@ -51,6 +51,8 @@ import {
 import { toast } from 'react-toastify';
 import { Base64ImageData } from '../types';
 import { propertiesApi } from '../services/api';
+import { imageApi } from '../services/imageApi';
+import DateInput from '../components/DateInput';
 
 
 // Interfaces
@@ -156,6 +158,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [photoCapturing, setPhotoCapturing] = useState(false);
   const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
   const [signatureData, setSignatureData] = useState<string>('');
+  
+  // New GitLab image storage state
+  const [ownerPhotoImageId, setOwnerPhotoImageId] = useState<string | null>(null);
+  const [signatureImageId, setSignatureImageId] = useState<string | null>(null);
+  const [sketchPhotoImageId, setSketchPhotoImageId] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null); // Track which image is uploading
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
   // Form data state
@@ -802,9 +810,94 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
 
+  // Image compression utility
+  const compressImage = (canvas: HTMLCanvasElement, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.6): string => {
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
+    const originalSize = canvas.toDataURL('image/jpeg', 1.0).length;
+    
+    // Calculate new dimensions while maintaining aspect ratio
+    let newWidth = originalWidth;
+    let newHeight = originalHeight;
+    
+    if (originalWidth > maxWidth || originalHeight > maxHeight) {
+      const aspectRatio = originalWidth / originalHeight;
+      
+      if (originalWidth > originalHeight) {
+        newWidth = Math.min(maxWidth, originalWidth);
+        newHeight = newWidth / aspectRatio;
+      } else {
+        newHeight = Math.min(maxHeight, originalHeight);
+        newWidth = newHeight * aspectRatio;
+      }
+    }
+    
+    // Create a new canvas with compressed dimensions
+    const compressedCanvas = document.createElement('canvas');
+    const compressedCtx = compressedCanvas.getContext('2d');
+    
+    if (compressedCtx) {
+      compressedCanvas.width = newWidth;
+      compressedCanvas.height = newHeight;
+      
+      // Draw the original canvas onto the compressed canvas
+      compressedCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+      
+      // Convert to data URL with compression
+      const compressedDataUrl = compressedCanvas.toDataURL('image/jpeg', quality);
+      const compressedSize = compressedDataUrl.length;
+      
+      // Log compression stats for debugging
+      console.log(`📸 Image compressed: ${originalWidth}x${originalHeight} → ${newWidth}x${newHeight}, ${Math.round(originalSize/1024)}KB → ${Math.round(compressedSize/1024)}KB (${Math.round((1 - compressedSize/originalSize) * 100)}% reduction)`);
+      
+      return compressedDataUrl;
+    }
+    
+    // Fallback to original canvas if compression fails
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+
   // Photo capture functions
   const isMobileDevice = () => {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
+  // New GitLab image upload function
+  const uploadImageToGitLab = async (
+    file: File, 
+    imageType: 'owner_photo' | 'signature' | 'sketch_photo',
+    onSuccess: (imageId: string) => void
+  ) => {
+    try {
+      setUploadingImage(imageType);
+      
+      // Generate a temporary property ID for uploads before property creation
+      const tempPropertyId = editingProperty?.id || `temp-${Date.now()}`;
+      
+      console.log(`📤 Uploading ${imageType} to GitLab...`);
+      
+      const uploadResult = await imageApi.uploadImage(
+        file, 
+        tempPropertyId, 
+        imageType,
+        (progress) => {
+          console.log(`📤 Upload progress: ${progress}%`);
+        }
+      );
+      
+      console.log(`✅ ${imageType} uploaded successfully:`, uploadResult.data.image);
+      
+      // Call success callback with image ID
+      onSuccess(uploadResult.data.image.id);
+      
+      toast.success(`${imageType.replace('_', ' ')} uploaded successfully!`);
+      
+    } catch (error) {
+      console.error(`❌ Error uploading ${imageType}:`, error);
+      toast.error(`Failed to upload ${imageType.replace('_', ' ')}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUploadingImage(null);
+    }
   };
 
   const capturePhoto = async () => {
@@ -840,14 +933,30 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // Convert to data URL with 70% compression
-          const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setCapturedPhoto(photoDataUrl);
+          // Use aggressive compression to reduce file size
+          const photoDataUrl = compressImage(canvas, 800, 600, 0.5);
           
-          stream.getTracks().forEach(track => track.stop());
-          
-          setPhotoDialogOpen(false);
-          toast.success('Photo captured successfully from camera!');
+          // Convert canvas to blob for GitLab upload
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
+              
+              // Upload to GitLab
+              uploadImageToGitLab(file, 'owner_photo', (imageId) => {
+                setOwnerPhotoImageId(imageId);
+                setCapturedPhoto(photoDataUrl); // Keep for preview
+                
+                stream.getTracks().forEach(track => track.stop());
+                setPhotoDialogOpen(false);
+              });
+            } else {
+              // Fallback to base64 if blob conversion fails
+              setCapturedPhoto(photoDataUrl);
+              stream.getTracks().forEach(track => track.stop());
+              setPhotoDialogOpen(false);
+              toast.success('Photo captured successfully from camera!');
+            }
+          }, 'image/jpeg', 0.5);
         }
       } else {
         toast.info('Camera not supported. Opening file upload...');
@@ -898,14 +1007,19 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           return;
         }
         
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const result = event.target?.result as string;
-          setCapturedPhoto(result);
-          setPhotoDialogOpen(false);
-          toast.success('Photo uploaded successfully!');
-        };
-        reader.readAsDataURL(file);
+        // Upload to GitLab instead of converting to base64
+        uploadImageToGitLab(file, 'owner_photo', (imageId) => {
+          setOwnerPhotoImageId(imageId);
+          
+          // Also create a preview URL for display
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const result = event.target?.result as string;
+            setCapturedPhoto(result); // Keep for preview
+            setPhotoDialogOpen(false);
+          };
+          reader.readAsDataURL(file);
+        });
       }
     };
     
@@ -955,8 +1069,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // Convert to data URL with 70% compression
-          const sketchDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          // Use aggressive compression to reduce file size
+          const sketchDataUrl = compressImage(canvas, 800, 600, 0.5);
           setSketchPhoto(sketchDataUrl);
           
           // Create Base64ImageData object
@@ -1102,11 +1216,29 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           return;
         }
         
-        const dataURL = canvas.toDataURL();
-        setSignatureData(dataURL);
-        setSignatureOpen(false);
-        toast.success('Signature saved successfully!');
-        console.log('✍️ Signature: Saved successfully');
+        // Compress signature to reduce file size
+        const compressedSignature = compressImage(canvas, 400, 200, 0.7);
+        
+        // Convert canvas to blob for GitLab upload
+        canvas.toBlob(async (blob) => {
+          if (blob) {
+            const file = new File([blob], 'signature.png', { type: 'image/png' });
+            
+            // Upload to GitLab
+            uploadImageToGitLab(file, 'signature', (imageId) => {
+              setSignatureImageId(imageId);
+              setSignatureData(compressedSignature); // Keep for preview
+              setSignatureOpen(false);
+              console.log('✍️ Signature: Uploaded to GitLab successfully');
+            });
+          } else {
+            // Fallback to base64 if blob conversion fails
+            setSignatureData(compressedSignature);
+            setSignatureOpen(false);
+            toast.success('Signature saved successfully!');
+            console.log('✍️ Signature: Saved successfully');
+          }
+        }, 'image/png', 0.7);
       }
     }
   };
@@ -1249,18 +1381,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         toast.error('Please capture GPS location before proceeding');
         return;
       }
-      if (!capturedPhoto) {
+      if (!capturedPhoto && !ownerPhotoImageId) {
         toast.error('Please capture owner/tenant photo before proceeding');
         return;
       }
-      if (!signatureData) {
+      if (!signatureData && !signatureImageId) {
         toast.error('Please add digital signature before proceeding');
         return;
       }
     }
     
     if (activeStep === 5) {
-      if (!sketchPhoto && !sketchPhotoBase64) {
+      if (!sketchPhoto && !sketchPhotoBase64 && !sketchPhotoImageId) {
         toast.error('Please capture a sketch photo before proceeding');
         return;
       }
@@ -1286,6 +1418,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         longitude: parseFloat(formData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
+        // New GitLab image references
+        owner_photo_image_id: ownerPhotoImageId,
+        signature_image_id: signatureImageId,
+        sketch_photo_image_id: sketchPhotoImageId,
+        // Legacy base64 fields (for backward compatibility during migration)
         signature_data: signatureData,
         owner_tenant_photo: capturedPhoto,
         sketch_photo: sketchPhotoBase64?.data || null,
@@ -1334,6 +1471,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         longitude: parseFloat(formData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
+        // New GitLab image references
+        owner_photo_image_id: ownerPhotoImageId,
+        signature_image_id: signatureImageId,
+        sketch_photo_image_id: sketchPhotoImageId,
+        // Legacy base64 fields (for backward compatibility during migration)
         signature_data: signatureData,
         owner_tenant_photo: capturedPhoto,
         sketch_photo: sketchPhotoBase64?.data || null,
@@ -1832,6 +1974,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 onChange={(e) => handleInputChange('construction_year', e.target.value)}
                 placeholder="2015"
                 inputProps={{ min: 1900, max: new Date().getFullYear() }}
+                helperText="Enter year (e.g., 2015)"
               />
             </Grid>
             
@@ -1879,12 +2022,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 </Grid>
                 
                 <Grid item xs={12} sm={4}>
-                  <TextField
+                  <DateInput
                     fullWidth
                     label="B.P Date"
-                    type="date"
                     value={formData.bp_date}
-                    onChange={(e) => handleInputChange('bp_date', e.target.value)}
+                    onChange={(value) => handleInputChange('bp_date', value)}
+                    placeholder="DD/MM/YYYY"
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
@@ -1996,12 +2139,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                         </Grid>
                         
                         <Grid item xs={12} sm={4}>
-                          <TextField
+                          <DateInput
                             fullWidth
                             label="Connection Date"
-                            type="date"
                             value={formData.water_connection_date}
-                            onChange={(e) => handleInputChange('water_connection_date', e.target.value)}
+                            onChange={(value) => handleInputChange('water_connection_date', value)}
+                            placeholder="DD/MM/YYYY"
                             InputLabelProps={{ shrink: true }}
                           />
                         </Grid>
@@ -2555,13 +2698,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     <strong>GPS:</strong> {formData.latitude}, {formData.longitude}
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Photo:</strong> {capturedPhoto ? '✅ Captured' : '❌ Missing'}
+                    <strong>Photo:</strong> {capturedPhoto || ownerPhotoImageId ? '✅ Captured' : '❌ Missing'}
+                    {ownerPhotoImageId && ' 🌐'}
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Signature:</strong> {signatureData ? '✅ Captured' : '❌ Missing'}
+                    <strong>Signature:</strong> {signatureData || signatureImageId ? '✅ Captured' : '❌ Missing'}
+                    {signatureImageId && ' 🌐'}
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Sketch:</strong> {(sketchPhoto || sketchPhotoBase64) ? '✅ Captured' : '❌ Missing'}
+                    <strong>Sketch:</strong> {(sketchPhoto || sketchPhotoBase64 || sketchPhotoImageId) ? '✅ Captured' : '❌ Missing'}
+                    {sketchPhotoImageId && ' 🌐'}
                   </Typography>
                 </CardContent>
               </Card>
