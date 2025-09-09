@@ -84,11 +84,16 @@ export interface Property {
   latitude?: number;
   longitude?: number;
   
-  // Photos and Signatures
+  // Photos and Signatures (Legacy Base64 - DEPRECATED)
   owner_tenant_photo?: string | null;
   signature_data?: string | null;
   sketch_photo?: string | null; // Base64 encoded sketch photo data (same pattern as owner_tenant_photo)
   sketch_photo_captured_at?: string | null;
+  
+  // Image References (New GitLab-based storage)
+  owner_photo_image_id?: string | null;
+  signature_image_id?: string | null;
+  sketch_photo_image_id?: string | null;
   
   // Tax Assessment
   assessment_year?: number;
@@ -121,11 +126,14 @@ export interface Property {
 export interface PropertyImage {
   id: string;
   property_id: string;
+  image_type: 'owner_photo' | 'signature' | 'sketch_photo';
+  gitlab_file_path: string;
+  gitlab_url: string;
   file_name: string;
-  file_path: string;
   file_size: number;
   mime_type: string;
   uploaded_by: string;
+  uploaded_at: string;
   created_at: string;
 }
 
