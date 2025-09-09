@@ -424,29 +424,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setLocationError(null);
     setCapturedAddress(null);
 
-    // Check permission status first (if supported)
-    if ('permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' })
-        .then((permissionStatus) => {
-          console.log('📍 Geolocation permission status:', permissionStatus.state);
-          
-          if (permissionStatus.state === 'denied') {
-            toast.error('Location permission denied. Please enable location access in browser settings.');
-            setLocationLoading(false);
-            return;
-          }
-          
-          // Proceed with location request
-          performLocationRequest();
-        })
-        .catch(() => {
-          console.log('⚠️ Permission API not supported, proceeding with location request');
-          performLocationRequest();
-        });
-    } else {
-      // Fallback for browsers without Permissions API
-      performLocationRequest();
-    }
+    // ✅ FIXED: Always attempt GPS capture directly (like your earlier working code)
+    // This forces the permission popup to appear
+    performLocationRequest();
   };
 
   const performLocationRequest = () => {
@@ -547,7 +527,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const handleLocationError = (error: any) => {
-    console.error('❌ GPS capture failed completely:', error.code, error.message);
+    console.error('❌ GPS capture failed:', error.code, error.message);
     
     let errorMessage = 'Failed to capture GPS location';
     let troubleshootingTip = '';
@@ -555,12 +535,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (error.code) {
           switch (error.code) {
             case error.PERMISSION_DENIED:
-          errorMessage = 'Location access denied by user or browser settings';
-          troubleshootingTip = 'Please enable location services in your browser settings and refresh the page.';
+          errorMessage = 'Location access denied';
+          troubleshootingTip = 'Please allow location access when prompted, or enable it in browser settings.';
               break;
             case error.POSITION_UNAVAILABLE:
           errorMessage = 'Location services unavailable';
-          troubleshootingTip = 'Please check if GPS/Location Services are enabled on your device and try again.';
+          troubleshootingTip = 'Please check if GPS/Location Services are enabled on your device.';
               break;
             case error.TIMEOUT:
           errorMessage = 'GPS request timed out';
@@ -568,17 +548,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               break;
             default:
           errorMessage = `GPS error: ${error.message || 'Unknown error'}`;
-          troubleshootingTip = 'Please try refreshing the page or using manual coordinate entry.';
+          troubleshootingTip = 'Please try again or use manual coordinate entry.';
       }
           }
           
     setLocationError(`${errorMessage}. ${troubleshootingTip}`);
           toast.error(errorMessage);
-    
-    // Show additional troubleshooting info
-    setTimeout(() => {
-      toast.info(troubleshootingTip);
-    }, 2000);
     
     setLocationLoading(false);
   };
@@ -648,6 +623,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       setGeocodingLoading(false);
     }
   };
+
+
 
   const processAddressData = (data: any) => {
     const address = data.display_name;
@@ -1364,6 +1341,15 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         construction_type: formData.construction_type as any
       };
 
+      // Add debugging
+      console.log('📤 Sending API data:', JSON.stringify(apiData, null, 2));
+      console.log('📤 Key fields validation:');
+      console.log('- ward_number:', apiData.ward_number, typeof apiData.ward_number);
+      console.log('- pincode:', apiData.pincode, typeof apiData.pincode);
+      console.log('- plot_area:', apiData.plot_area, typeof apiData.plot_area);
+      console.log('- built_up_area:', apiData.built_up_area, typeof apiData.built_up_area);
+      console.log('- carpet_area:', apiData.carpet_area, typeof apiData.carpet_area);
+
       let response;
       
       if (isEditMode && editingProperty) {
@@ -1457,7 +1443,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       }
     } catch (error: any) {
       console.error('Error submitting survey:', error);
-      toast.error('Failed to submit survey: ' + (error.response?.data?.message || 'Unknown error'));
+      console.error('Full error response:', error.response?.data);
+      
+      const errorMessage = error.response?.data?.message || 'Unknown error';
+      const validationErrors = error.response?.data?.errors;
+      
+      if (validationErrors && Array.isArray(validationErrors)) {
+        const errorDetails = validationErrors.map((err: any) => err.msg || err.message).join(', ');
+        toast.error(`Validation errors: ${errorDetails}`);
+      } else {
+        toast.error('Failed to submit survey: ' + errorMessage);
+      }
     } finally {
       setLoading(false);
     }
