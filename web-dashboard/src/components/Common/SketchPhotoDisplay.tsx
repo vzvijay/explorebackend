@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { Base64ImageData } from '../../types';
 import { downloadBase64Image, createBase64PreviewUrl } from '../../utils/base64Utils';
+import { imageApi } from '../../services/imageApi';
 
 // Utility function to get API base URL (same as PropertySurveyForm)
 const getApiBaseUrl = () => {
@@ -42,7 +43,8 @@ const getApiBaseUrl = () => {
 
 interface SketchPhotoDisplayProps {
   sketchPhotoPath?: string | null; // Legacy file path support
-  sketchPhotoBase64?: Base64ImageData | null; // New base64 data support
+  sketchPhotoBase64?: Base64ImageData | null; // Legacy base64 data support
+  sketchPhotoImageId?: string | null; // New GitLab image ID support
   capturedAt: string | null;
   surveyNumber: string;
   ownerName: string;
@@ -54,6 +56,7 @@ interface SketchPhotoDisplayProps {
 const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
   sketchPhotoPath,
   sketchPhotoBase64,
+  sketchPhotoImageId,
   capturedAt,
   surveyNumber,
   ownerName,
@@ -63,11 +66,14 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
 }) => {
   const [zoomDialog, setZoomDialog] = useState(false);
 
-  // Determine the actual photo source (prioritize base64 over legacy path)
-  const photoSource = sketchPhotoBase64?.data || sketchPhotoPath;
-  const isBase64 = !!sketchPhotoBase64?.data;
-  const isDataUrl = photoSource?.startsWith('data:');
-  const isLegacyPath = !isBase64 && !isDataUrl && !!sketchPhotoPath;
+  // Determine the actual photo source (prioritize GitLab ID, then base64, then legacy path)
+  const photoSource = sketchPhotoImageId 
+    ? imageApi.generateImageUrl(sketchPhotoImageId)
+    : sketchPhotoBase64?.data || sketchPhotoPath;
+  const isGitLabImage = !!sketchPhotoImageId;
+  const isBase64 = !!sketchPhotoBase64?.data && !isGitLabImage;
+  const isDataUrl = (photoSource?.startsWith('data:') || false) && !isGitLabImage;
+  const isLegacyPath = !isBase64 && !isDataUrl && !isGitLabImage && !!sketchPhotoPath;
 
   // Size configurations
   const sizeConfig = {
@@ -205,7 +211,7 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
     }
   }, [photoSource, isBase64, isDataUrl, isLegacyPath, sketchPhotoBase64]);
 
-  if (!photoSource) {
+  if (!photoSource && !sketchPhotoImageId) {
     return (
       <Card 
         sx={{ 
@@ -238,8 +244,9 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
       <Card sx={{ width, height, position: 'relative' }}>
         <CardMedia
           component="img"
-          image={isBase64 ? createBase64PreviewUrl(sketchPhotoBase64!.data, sketchPhotoBase64!.type) : 
-                 isDataUrl ? photoSource : 
+          image={isGitLabImage ? photoSource || '' :
+                 isBase64 ? createBase64PreviewUrl(sketchPhotoBase64!.data, sketchPhotoBase64!.type) : 
+                 isDataUrl ? photoSource || '' : 
                  `${getApiBaseUrl()}/${sketchPhotoPath}`}
           alt={`Sketch photo for survey ${surveyNumber}`}
           sx={{ 
@@ -253,7 +260,9 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
             console.error('❌ Error loading sketch photo image:', e);
             console.log('🖼️ Failed to load sketch photo from:', photoSource);
             
-            if (isBase64) {
+            if (isGitLabImage) {
+              console.warn('⚠️ GitLab image failed to load. This might be a network or authentication issue.');
+            } else if (isBase64) {
               console.warn('⚠️ Base64 image failed to load. This might be a data corruption issue.');
             } else if (isLegacyPath) {
               console.warn('⚠️ Backend image failed to load. This might be a file path issue.');
@@ -261,6 +270,7 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
           }}
           onLoad={() => {
             console.log('✅ Sketch photo loaded successfully from:', 
+              isGitLabImage ? 'GitLab storage' :
               isBase64 ? 'base64 data' : 
               isDataUrl ? 'data URL' : 'backend path'
             );
@@ -368,7 +378,7 @@ const SketchPhotoDisplay: React.FC<SketchPhotoDisplayProps> = ({
         <DialogContent sx={{ p: 0, textAlign: 'center' }}>
           <img
             src={isBase64 ? createBase64PreviewUrl(sketchPhotoBase64!.data, sketchPhotoBase64!.type) : 
-                 isDataUrl ? photoSource : 
+                 isDataUrl ? photoSource || '' : 
                  `${getApiBaseUrl()}/${sketchPhotoPath}`}
             alt={`Sketch photo for survey ${surveyNumber}`}
             style={{
