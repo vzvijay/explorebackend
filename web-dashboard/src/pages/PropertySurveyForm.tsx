@@ -57,6 +57,7 @@ import DateInput from '../components/DateInput';
 
 // Interfaces
 interface FormData {
+  property_id: string;
   survey_number: string;
   old_mc_property_number: string;
   register_no: string;
@@ -163,11 +164,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [ownerPhotoImageId, setOwnerPhotoImageId] = useState<string | null>(null);
   const [signatureImageId, setSignatureImageId] = useState<string | null>(null);
   const [sketchPhotoImageId, setSketchPhotoImageId] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState<string | null>(null); // Track which image is uploading
+  // const [uploadingImage, setUploadingImage] = useState<string | null>(null); // Track which image is uploading
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
   // Form data state
   const [formData, setFormData] = useState<FormData>({
+    property_id: `PROP-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
     survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
     old_mc_property_number: '',
     register_no: '',
@@ -391,6 +393,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const validateForm = (): string[] => {
     const errors: string[] = [];
     
+    if (!formData.property_id.trim()) errors.push('Property ID');
     if (!formData.owner_name.trim()) errors.push('Property Owner Name');
     if (!formData.locality.trim()) errors.push('Locality');
     if (!formData.ward_number.trim()) errors.push('Ward Number');
@@ -401,6 +404,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (!formData.plot_area.trim()) errors.push('Plot Area');
     if (!formData.built_up_area.trim()) errors.push('Built-up Area');
     if (!formData.carpet_area.trim()) errors.push('Carpet Area');
+    
+    // Validate Property ID format
+    if (formData.property_id && !/^[A-Z0-9_-]+$/.test(formData.property_id)) {
+      errors.push('Property ID (only uppercase letters, numbers, hyphens, underscores)');
+    }
     
     return errors;
   };
@@ -810,7 +818,129 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
 
+  // Convert data URL to File object
+  const dataURLtoFile = (dataUrl: string, filename: string): File => {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
+
+  // Smart compression based on image type
+  const smartCompressImage = (canvas: HTMLCanvasElement, imageType: 'sketch' | 'owner' | 'signature'): string => {
+    console.log(`🔧 Smart compression starting for ${imageType}`);
+    console.log(`📐 Original canvas size: ${canvas.width}x${canvas.height}`);
+    
+    // Check if original canvas has content
+    const originalCtx = canvas.getContext('2d');
+    if (originalCtx) {
+      const imageData = originalCtx.getImageData(0, 0, canvas.width, canvas.height);
+      const hasContent = imageData.data.some(pixel => pixel !== 0);
+      console.log(`🔍 Original canvas has content: ${hasContent}`);
+      
+      if (!hasContent) {
+        console.error('❌ Original canvas is empty/black');
+        throw new Error('Original canvas is empty');
+      }
+    }
+    
+    const configs = {
+      sketch: { maxWidth: 1200, maxHeight: 900, quality: 0.95 },
+      owner: { maxWidth: 1000, maxHeight: 750, quality: 0.95 },
+      signature: { maxWidth: 800, maxHeight: 600, quality: 0.95 }
+    };
+    
+    const config = configs[imageType];
+    const { maxWidth, maxHeight, quality } = config;
+    
+    console.log(`⚙️ Compression config: maxWidth=${maxWidth}, maxHeight=${maxHeight}, quality=${quality}`);
+    
+    // Calculate new dimensions maintaining aspect ratio
+    const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+    const newWidth = Math.max(canvas.width * ratio, 100); // Minimum 100px width
+    const newHeight = Math.max(canvas.height * ratio, 100); // Minimum 100px height
+    
+    console.log(`📏 New dimensions: ${newWidth}x${newHeight} (ratio: ${ratio})`);
+    
+    // Create new canvas with optimal dimensions
+    const newCanvas = document.createElement('canvas');
+    newCanvas.width = newWidth;
+    newCanvas.height = newHeight;
+    
+    const ctx = newCanvas.getContext('2d');
+    if (!ctx) {
+      console.error('❌ Canvas context not available');
+      throw new Error('Canvas context not available');
+    }
+    
+    console.log(`🎨 Canvas context created: ${ctx ? 'success' : 'failed'}`);
+    
+    // Draw with high quality
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(canvas, 0, 0, newWidth, newHeight);
+    
+    console.log(`🖼️ Image drawn to new canvas`);
+    
+    // Apply manual brightness enhancement
+    const imageData = ctx.getImageData(0, 0, newWidth, newHeight);
+    const data = imageData.data;
+    
+    console.log(`🔧 Applying manual brightness enhancement...`);
+    
+    // Brightness and contrast enhancement
+    const brightnessMultiplier = 1.4; // 40% brighter
+    const contrastMultiplier = 1.2;   // 20% more contrast
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Apply brightness and contrast to RGB channels (skip alpha)
+      let r = data[i] * brightnessMultiplier;
+      let g = data[i + 1] * brightnessMultiplier;
+      let b = data[i + 2] * brightnessMultiplier;
+      
+      // Apply contrast enhancement
+      r = ((r - 128) * contrastMultiplier) + 128;
+      g = ((g - 128) * contrastMultiplier) + 128;
+      b = ((b - 128) * contrastMultiplier) + 128;
+      
+      // Clamp values to 0-255 range
+      data[i] = Math.max(0, Math.min(255, r));     // Red
+      data[i + 1] = Math.max(0, Math.min(255, g)); // Green
+      data[i + 2] = Math.max(0, Math.min(255, b)); // Blue
+      // Alpha channel (i + 3) remains unchanged
+    }
+    
+    // Put the enhanced image data back
+    ctx.putImageData(imageData, 0, 0);
+    
+    console.log(`✅ Manual brightness enhancement applied (${brightnessMultiplier}x)`);
+    
+    // Check if new canvas has content
+    const newImageData = ctx.getImageData(0, 0, newWidth, newHeight);
+    const newHasContent = newImageData.data.some(pixel => pixel !== 0);
+    console.log(`🔍 New canvas has content: ${newHasContent}`);
+    
+    if (!newHasContent) {
+      console.error('❌ New canvas is empty/black after compression');
+      throw new Error('Compressed canvas is empty');
+    }
+    
+    const dataUrl = newCanvas.toDataURL('image/jpeg', quality);
+    
+    console.log(`📊 Compressed image size: ${dataUrl.length} characters`);
+    console.log(`🔍 Data URL preview: ${dataUrl.substring(0, 100)}...`);
+    
+    return dataUrl;
+  };
+
   // Image compression utility
+  // Legacy compression function - kept for reference but not used
+  /*
   const compressImage = (canvas: HTMLCanvasElement, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.6): string => {
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
@@ -856,6 +986,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     // Fallback to original canvas if compression fails
     return canvas.toDataURL('image/jpeg', quality);
   };
+  */
 
   // Photo capture functions
   const isMobileDevice = () => {
@@ -869,16 +1000,20 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     onSuccess: (imageId: string) => void
   ) => {
     try {
-      setUploadingImage(imageType);
+      // setUploadingImage(imageType);
       
-      // Generate a temporary property ID for uploads before property creation
-      const tempPropertyId = editingProperty?.id || `temp-${Date.now()}`;
+      // Use the property_id from form data for image uploads
+      const propertyId = formData.property_id;
       
-      console.log(`📤 Uploading ${imageType} to GitLab...`);
+      if (!propertyId) {
+        throw new Error('Property ID is required for image upload');
+      }
+      
+      console.log(`📤 Uploading ${imageType} to GitLab for property ${propertyId}...`);
       
       const uploadResult = await imageApi.uploadImage(
         file, 
-        tempPropertyId, 
+        propertyId, 
         imageType,
         (progress) => {
           console.log(`📤 Upload progress: ${progress}%`);
@@ -896,7 +1031,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       console.error(`❌ Error uploading ${imageType}:`, error);
       toast.error(`Failed to upload ${imageType.replace('_', ' ')}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setUploadingImage(null);
+      // setUploadingImage(null);
     }
   };
 
@@ -909,8 +1044,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: isMobileDevice() ? 'environment' : 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           } 
         });
         
@@ -923,7 +1058,72 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           video.onloadedmetadata = () => resolve(true);
         });
         
+        // Wait for video to actually start playing and have content
+        console.log(`⏳ Waiting for video stream to have content...`);
+        toast.info('Waiting for camera to stabilize...');
+        
+        let attempts = 0;
+        const maxAttempts = 30; // 3 seconds max wait
+        
+        while (attempts < maxAttempts) {
+          // Check if video is playing and has content
+          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+            // Test if video has actual content (not just black frames)
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+              const hasContent = testImageData.data.some(pixel => pixel !== 0);
+              
+              console.log(`🔍 Video content check attempt ${attempts + 1}: ${hasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
+              
+              if (hasContent) {
+                console.log(`✅ Video stream has content! Proceeding with capture.`);
+                break;
+              }
+            }
+          }
+          
+          attempts++;
+          // Show progress every 5 attempts (0.5 seconds)
+          if (attempts % 5 === 0) {
+            const remaining = Math.ceil((maxAttempts - attempts) / 5);
+            toast.info(`Camera stabilizing... ${remaining} seconds remaining`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+        }
+        
+        if (attempts >= maxAttempts) {
+          console.error('❌ Video stream never produced content after 3 seconds');
+          toast.error('Camera is not producing content. Please check camera permissions and try again.');
+          setPhotoCapturing(false);
+          return;
+        }
+        
         toast.info('Camera ready! Position the person in frame and click capture.');
+        
+        // TEST: Add video element to DOM temporarily to see if video stream works
+        console.log(`🧪 TEST: Adding video element to DOM for visual inspection`);
+        video.style.position = 'fixed';
+        video.style.top = '10px';
+        video.style.right = '10px';
+        video.style.width = '200px';
+        video.style.height = '150px';
+        video.style.border = '2px solid red';
+        video.style.zIndex = '9999';
+        document.body.appendChild(video);
+        
+        // Remove video element after 5 seconds
+        setTimeout(() => {
+          if (video.parentNode) {
+            video.parentNode.removeChild(video);
+            console.log(`🧪 TEST: Video element removed from DOM`);
+          }
+        }, 5000);
         
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -931,32 +1131,191 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const ctx = canvas.getContext('2d');
         
         if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          console.log(`📸 Drawing video to canvas: ${canvas.width}x${canvas.height}`);
           
-          // Use aggressive compression to reduce file size
-          const photoDataUrl = compressImage(canvas, 800, 600, 0.5);
+          // TEST: Check video element properties before drawing
+          console.log(`🧪 VIDEO TEST: Video element properties:`);
+          console.log(`   video.videoWidth: ${video.videoWidth}`);
+          console.log(`   video.videoHeight: ${video.videoHeight}`);
+          console.log(`   video.readyState: ${video.readyState}`);
+          console.log(`   video.currentTime: ${video.currentTime}`);
+          console.log(`   video.paused: ${video.paused}`);
+          console.log(`   video.ended: ${video.ended}`);
           
-          // Convert canvas to blob for GitLab upload
-          canvas.toBlob(async (blob) => {
-            if (blob) {
-              const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
+          // CRITICAL: Wait for video to actually have content before drawing
+          console.log(`⏳ Waiting for video to have actual content before drawing...`);
+          let drawAttempts = 0;
+          const maxDrawAttempts = 150; // 15 seconds max - camera needs even more time to warm up
+          
+          // Add initial delay to let camera fully initialize
+          console.log(`⏳ Initial camera initialization delay: 2 seconds...`);
+          toast.info('Initializing camera... Please wait');
+          
+          const tryDrawVideo = () => {
+            // Test if video has actual content (not just black frames)
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
               
-              // Upload to GitLab
-              uploadImageToGitLab(file, 'owner_photo', (imageId) => {
-                setOwnerPhotoImageId(imageId);
-                setCapturedPhoto(photoDataUrl); // Keep for preview
+              // ADVANCED CONTENT DETECTION: Check for meaningful brightness variation
+              const pixels = testImageData.data;
+              let totalBrightness = 0;
+              let maxBrightness = 0;
+              let minBrightness = 255;
+              let nonZeroPixels = 0;
+              
+              // Sample every 4th pixel for performance (RGBA = 4 values per pixel)
+              for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const brightness = (r + g + b) / 3;
                 
-                stream.getTracks().forEach(track => track.stop());
-                setPhotoDialogOpen(false);
-              });
-            } else {
-              // Fallback to base64 if blob conversion fails
-              setCapturedPhoto(photoDataUrl);
-              stream.getTracks().forEach(track => track.stop());
-              setPhotoDialogOpen(false);
-              toast.success('Photo captured successfully from camera!');
+                totalBrightness += brightness;
+                maxBrightness = Math.max(maxBrightness, brightness);
+                minBrightness = Math.min(minBrightness, brightness);
+                
+                if (brightness > 10) { // Not just black/dark
+                  nonZeroPixels++;
+                }
+              }
+              
+              const avgBrightness = totalBrightness / (pixels.length / 16);
+              const brightnessRange = maxBrightness - minBrightness;
+              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
+              
+              console.log(`🔍 Draw attempt ${drawAttempts + 1}:`);
+              console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
+              console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
+              console.log(`   Non-zero pixels: ${nonZeroPixels}`);
+              console.log(`   Has content: ${hasContent ? 'YES' : 'NO'}`);
+              
+              // Show progress every 10 attempts
+              if ((drawAttempts + 1) % 10 === 0) {
+                const progress = Math.round(((drawAttempts + 1) / maxDrawAttempts) * 100);
+                console.log(`📊 Camera warm-up progress: ${progress}% (${drawAttempts + 1}/${maxDrawAttempts})`);
+                toast.info(`Camera warming up... ${progress}%`);
+              }
+              
+              if (hasContent) {
+                console.log(`✅ Video has meaningful content! Drawing to main canvas...`);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                console.log(`✅ Video drawn to canvas successfully`);
+                
+                // Process the image immediately after successful drawing
+                processCapturedImage();
+                return true;
+              }
             }
-          }, 'image/jpeg', 0.5);
+            
+            drawAttempts++;
+            if (drawAttempts < maxDrawAttempts) {
+              setTimeout(tryDrawVideo, 100); // Wait 100ms and try again
+            } else {
+              console.error('❌ Video never produced content after 15 seconds');
+              toast.error('Camera is not producing content. Please check camera and try again.');
+              setPhotoCapturing(false);
+              return false;
+            }
+            return false;
+          };
+          
+          // Function to process the captured image
+          const processCapturedImage = () => {
+            // Test: Check if canvas has content immediately after drawing
+            const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const hasContent = testImageData.data.some(pixel => pixel !== 0);
+            console.log(`🔍 Canvas content check: ${hasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
+            
+            if (!hasContent) {
+              console.error('❌ Canvas is empty after drawing video!');
+              console.log(`📊 ImageData length: ${testImageData.data.length}`);
+              console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
+              toast.error('Camera is producing black frames. Please check camera and try again.');
+              setPhotoCapturing(false);
+              return;
+            }
+            
+            // Apply smart compression with fallback
+            let compressedDataUrl;
+            console.log(`🔧 Starting compression process for owner photo`);
+            console.log(`📐 Canvas dimensions: ${canvas.width}x${canvas.height}`);
+            
+            // SIMPLE TEST: Use basic JPEG with high quality
+            console.log(`🧪 SIMPLE TEST: Using basic JPEG with maximum quality`);
+            compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
+            console.log(`🧪 Simple JPEG dataUrl length: ${compressedDataUrl ? compressedDataUrl.length : 0}`);
+            console.log(`🧪 DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
+            
+            // Check if canvas has content
+            const rawImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const rawHasContent = rawImageData.data.some(pixel => pixel !== 0);
+            console.log(`🧪 Canvas content check: ${rawHasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
+            
+            if (rawHasContent) {
+              console.log(`🧪 Canvas first 20 pixels:`, Array.from(rawImageData.data.slice(0, 20)));
+            }
+            
+            console.log(`🖼️ Setting capturedPhoto for display: ${compressedDataUrl ? 'success' : 'failed'}`);
+            console.log(`🖼️ CompressedDataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
+            setCapturedPhoto(compressedDataUrl); // Keep for display
+            console.log(`🖼️ capturedPhoto state set, current value: ${capturedPhoto}`);
+            
+            // TEST: Create a test image element to see if the dataUrl works
+            console.log(`🧪 TEST: Creating test image element to verify dataUrl`);
+            const testImg = document.createElement('img');
+            testImg.src = compressedDataUrl;
+            testImg.style.position = 'fixed';
+            testImg.style.top = '200px';
+            testImg.style.right = '10px';
+            testImg.style.width = '200px';
+            testImg.style.height = '150px';
+            testImg.style.border = '2px solid blue';
+            testImg.style.zIndex = '9999';
+            testImg.onload = () => {
+              console.log(`🧪 TEST: Test image loaded successfully!`);
+              document.body.appendChild(testImg);
+              
+              // FORCE UPDATE: Since test image works, force update the main state
+              console.log(`🔄 FORCE UPDATE: Updating capturedPhoto state since test image works`);
+              setCapturedPhoto(compressedDataUrl);
+              
+              setTimeout(() => {
+                if (testImg.parentNode) {
+                  testImg.parentNode.removeChild(testImg);
+                  console.log(`🧪 TEST: Test image removed from DOM`);
+                }
+              }, 5000);
+            };
+            testImg.onerror = () => {
+              console.error(`🧪 TEST: Test image failed to load!`);
+            };
+            
+            // Upload to GitLab
+            const file = dataURLtoFile(compressedDataUrl, 'owner_photo.jpg');
+            console.log(`📤 Uploading to GitLab: ${file.name}, size: ${file.size} bytes`);
+            uploadImageToGitLab(file, 'owner_photo', (imageId) => {
+              console.log(`✔ GitLab upload successful, imageId: ${imageId}`);
+              setOwnerPhotoImageId(imageId);
+              setPhotoCapturing(false);
+              toast.success('Owner/Tenant Photo Captured Successfully!');
+            });
+          };
+          
+          // Start with initial delay, then begin content detection
+          setTimeout(() => {
+            console.log(`⏳ Initial delay complete, starting content detection...`);
+            toast.info('Camera ready! Detecting content...');
+            
+            if (!tryDrawVideo()) {
+              return; // Exit if video never has content
+            }
+          }, 2000); // 2 second initial delay
         }
       } else {
         toast.info('Camera not supported. Opening file upload...');
@@ -1028,7 +1387,61 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   const clearCapturedPhoto = () => {
     setCapturedPhoto(null);
+    setOwnerPhotoImageId(null);
     toast.info('Photo cleared. Please capture a new photo.');
+  };
+
+  const clearSketchPhoto = () => {
+    setSketchPhoto(null);
+    setSketchPhotoBase64(null);
+    setSketchPhotoImageId(null);
+    toast.info('Sketch photo cleared. Please capture a new sketch.');
+  };
+
+  const openSketchFileInput = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error('File too large. Please select an image under 10MB.');
+          return;
+        }
+        
+        if (!file.type.startsWith('image/')) {
+          toast.error('Please select a valid image file.');
+          return;
+        }
+        
+        // Upload to GitLab instead of converting to base64
+        uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
+          setSketchPhotoImageId(imageId);
+          
+          // Also create a preview URL for display
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const result = event.target?.result as string;
+            setSketchPhoto(result); // Keep for preview
+            
+            // Create Base64ImageData object for legacy compatibility
+            const base64Data: Base64ImageData = {
+              data: result.split(',')[1],
+              type: file.type,
+              size: file.size
+            };
+            setSketchPhotoBase64(base64Data);
+            
+            setSketchPhotoDialogOpen(false);
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+    };
+    
+    input.click();
   };
 
   // Sketch photo functions
@@ -1045,8 +1458,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           } 
         });
         
@@ -1067,24 +1480,35 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const ctx = canvas.getContext('2d');
         
         if (ctx) {
+          console.log(`📸 Drawing video to sketch canvas: ${canvas.width}x${canvas.height}`);
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          console.log(`✅ Video drawn to sketch canvas successfully`);
           
-          // Use aggressive compression to reduce file size
-          const sketchDataUrl = compressImage(canvas, 800, 600, 0.5);
-          setSketchPhoto(sketchDataUrl);
+          // Apply smart compression with fallback
+          let compressedDataUrl;
+          try {
+            compressedDataUrl = smartCompressImage(canvas, 'sketch');
+            console.log(`🖼️ Setting sketchPhoto for display: ${compressedDataUrl ? 'success' : 'failed'}`);
+          } catch (error) {
+            console.warn('⚠️ Smart compression failed, using fallback:', error);
+            // Fallback to simple compression with maximum quality
+            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.98);
+            console.log(`🔄 Fallback compression: ${compressedDataUrl ? 'success' : 'failed'}`);
+          }
+          setSketchPhoto(compressedDataUrl); // Keep for display
           
-          // Create Base64ImageData object
-          const base64Data: Base64ImageData = {
-            data: sketchDataUrl.split(',')[1],
-            type: "image/jpeg",
-            size: sketchDataUrl.length
-          };
-          setSketchPhotoBase64(base64Data);
+          // Upload to GitLab
+          const file = dataURLtoFile(compressedDataUrl, 'sketch_photo.jpg');
+          console.log(`📤 Uploading sketch to GitLab: ${file.name}, size: ${file.size} bytes`);
+          uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
+            console.log(`✅ Sketch GitLab upload successful, imageId: ${imageId}`);
+            setSketchPhotoImageId(imageId);
+            toast.success('Sketch photo captured and uploaded successfully!');
+          });
           
           stream.getTracks().forEach(track => track.stop());
           
           setSketchPhotoDialogOpen(false);
-          toast.success('Sketch photo captured successfully!');
         }
       } else {
         toast.error('Camera not supported on this device.');
@@ -1111,22 +1535,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (canvas) {
         console.log('✍️ Signature: Setting up canvas...');
         
-        // Set canvas dimensions
-        canvas.width = 400;
-        canvas.height = 200;
+        // Set canvas dimensions with high DPI support
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = 400 * dpr;
+        canvas.height = 200 * dpr;
+        canvas.style.width = '400px';
+        canvas.style.height = '200px';
         
       const ctx = canvas.getContext('2d');
       if (ctx) {
-          // Clear the canvas
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          // Scale context for high DPI displays
+          ctx.scale(dpr, dpr);
           
-          // Set default drawing style
-        ctx.strokeStyle = '#000000'; // Black color
+          // Clear the canvas with white background
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, 400, 200);
+          
+          // Set default drawing style for better visibility
+          ctx.strokeStyle = '#000000'; // Black color
           ctx.lineWidth = 3; // Line thickness
-        ctx.lineCap = 'round'; // Rounded line ends
-        ctx.lineJoin = 'round'; // Rounded line joins
+          ctx.lineCap = 'round'; // Rounded line ends
+          ctx.lineJoin = 'round'; // Rounded line joins
+          ctx.globalCompositeOperation = 'source-over'; // Ensure proper blending
           
-          console.log('✍️ Signature: Canvas setup complete');
+          console.log('✍️ Signature: Canvas setup complete with high DPI support');
+          console.log(`   Canvas dimensions: ${canvas.width}x${canvas.height}`);
+          console.log(`   Display dimensions: 400x200`);
+          console.log(`   Device pixel ratio: ${dpr}`);
         }
       }
     }, 100);
@@ -1207,38 +1642,110 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Check if anything was drawn
+        console.log(`✍️ Starting signature content detection...`);
+        
+        // ADVANCED CONTENT DETECTION: Check for meaningful drawing content
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const hasContent = imageData.data.some(pixel => pixel !== 0);
+        const pixels = imageData.data;
+        
+        let totalBrightness = 0;
+        let maxBrightness = 0;
+        let minBrightness = 255;
+        let nonZeroPixels = 0;
+        let drawingPixels = 0;
+        
+        // Sample every 4th pixel for performance (RGBA = 4 values per pixel)
+        for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const brightness = (r + g + b) / 3;
+          
+          totalBrightness += brightness;
+          maxBrightness = Math.max(maxBrightness, brightness);
+          minBrightness = Math.min(minBrightness, brightness);
+          
+          if (brightness > 10) { // Not just black/dark
+            nonZeroPixels++;
+          }
+          
+          if (brightness < 200) { // Likely drawing strokes (not white background)
+            drawingPixels++;
+          }
+        }
+        
+        const avgBrightness = totalBrightness / (pixels.length / 16);
+        const brightnessRange = maxBrightness - minBrightness;
+        const hasContent = avgBrightness < 250 && brightnessRange > 20 && drawingPixels > 50;
+        
+        console.log(`✍️ Signature content analysis:`);
+        console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
+        console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
+        console.log(`   Non-zero pixels: ${nonZeroPixels}`);
+        console.log(`   Drawing pixels: ${drawingPixels}`);
+        console.log(`   Has content: ${hasContent ? 'YES' : 'NO'}`);
         
         if (!hasContent) {
-          toast.error('Please draw a signature before saving');
+          console.log(`❌ No meaningful signature content detected`);
+          toast.error('Please draw a signature before saving. Make sure your signature is visible and clear.');
           return;
         }
         
-        // Compress signature to reduce file size
-        const compressedSignature = compressImage(canvas, 400, 200, 0.7);
+        console.log(`✅ Signature content detected! Proceeding with compression...`);
         
-        // Convert canvas to blob for GitLab upload
-        canvas.toBlob(async (blob) => {
-          if (blob) {
-            const file = new File([blob], 'signature.png', { type: 'image/png' });
-            
-            // Upload to GitLab
-            uploadImageToGitLab(file, 'signature', (imageId) => {
-              setSignatureImageId(imageId);
-              setSignatureData(compressedSignature); // Keep for preview
-              setSignatureOpen(false);
-              console.log('✍️ Signature: Uploaded to GitLab successfully');
-            });
-          } else {
-            // Fallback to base64 if blob conversion fails
-            setSignatureData(compressedSignature);
-            setSignatureOpen(false);
-            toast.success('Signature saved successfully!');
-            console.log('✍️ Signature: Saved successfully');
+        // Apply smart compression with enhanced fallback
+        console.log(`✍️ Starting signature compression`);
+        let compressedSignature;
+        try {
+          compressedSignature = smartCompressImage(canvas, 'signature');
+          console.log(`🖼️ Smart compression result: ${compressedSignature ? 'success' : 'failed'}`);
+          
+          // Validate compressed signature
+          if (!compressedSignature || compressedSignature.length < 100) {
+            throw new Error('Smart compression produced invalid result');
           }
-        }, 'image/png', 0.7);
+          
+          console.log(`✅ Smart compression successful, data length: ${compressedSignature.length}`);
+        } catch (error) {
+          console.warn('⚠️ Smart compression failed, using enhanced fallback:', error);
+          
+          // Enhanced fallback: Try multiple compression methods
+          try {
+            // Try PNG first (better for signatures with sharp edges)
+            compressedSignature = canvas.toDataURL('image/png', 1.0);
+            console.log(`🔄 PNG fallback: ${compressedSignature ? 'success' : 'failed'}`);
+            
+            if (!compressedSignature || compressedSignature.length < 100) {
+              throw new Error('PNG fallback failed');
+            }
+          } catch (pngError) {
+            console.warn('⚠️ PNG fallback failed, trying JPEG:', pngError);
+            // Final fallback: JPEG with high quality
+            compressedSignature = canvas.toDataURL('image/jpeg', 0.98);
+            console.log(`🔄 JPEG fallback: ${compressedSignature ? 'success' : 'failed'}`);
+          }
+        }
+        
+        // Final validation
+        if (!compressedSignature || compressedSignature.length < 100) {
+          console.error('❌ All compression methods failed');
+          toast.error('Failed to process signature. Please try drawing again.');
+          return;
+        }
+        
+        console.log(`✅ Signature compression complete, setting display data...`);
+        setSignatureData(compressedSignature); // Keep for display
+        
+        // Upload to GitLab
+        const file = dataURLtoFile(compressedSignature, 'signature.jpg');
+        console.log(`📤 Uploading signature to GitLab: ${file.name}, size: ${file.size} bytes`);
+        uploadImageToGitLab(file, 'signature', (imageId) => {
+          console.log(`✅ Signature GitLab upload successful, imageId: ${imageId}`);
+          setSignatureImageId(imageId);
+          setSignatureOpen(false);
+          toast.success('Signature saved and uploaded successfully!');
+          console.log('✍️ Signature: Uploaded to GitLab successfully');
+        });
       }
     }
   };
@@ -1418,14 +1925,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         longitude: parseFloat(formData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
-        // New GitLab image references
+        // GitLab image references only
         owner_photo_image_id: ownerPhotoImageId,
         signature_image_id: signatureImageId,
         sketch_photo_image_id: sketchPhotoImageId,
-        // Legacy base64 fields (for backward compatibility during migration)
-        signature_data: signatureData,
-        owner_tenant_photo: capturedPhoto,
-        sketch_photo: sketchPhotoBase64?.data || null,
+        // Base64 fields removed - using GitLab storage only
         property_type: formData.property_type as any,
         construction_type: formData.construction_type as any
       };
@@ -1471,14 +1975,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         longitude: parseFloat(formData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
-        // New GitLab image references
+        // GitLab image references only
         owner_photo_image_id: ownerPhotoImageId,
         signature_image_id: signatureImageId,
         sketch_photo_image_id: sketchPhotoImageId,
-        // Legacy base64 fields (for backward compatibility during migration)
-        signature_data: signatureData,
-        owner_tenant_photo: capturedPhoto,
-        sketch_photo: sketchPhotoBase64?.data || null,
+        // Base64 fields removed - using GitLab storage only
         property_type: formData.property_type as any,
         construction_type: formData.construction_type as any
       };
@@ -1526,6 +2027,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         
         // Reset form for new surveys
         setFormData({
+          property_id: `PROP-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
           survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
           old_mc_property_number: '',
           register_no: '',
@@ -1581,6 +2083,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         setCapturedPhoto(null);
         setSketchPhoto(null);
         setSketchPhotoBase64(null);
+        setOwnerPhotoImageId(null);
+        setSignatureImageId(null);
+        setSketchPhotoImageId(null);
         setActiveStep(0);
       }
     } catch (error: any) {
@@ -1725,6 +2230,22 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 <Person sx={{ mr: 1, verticalAlign: 'middle' }} />
                 Basic Information
               </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Property ID *"
+                value={formData.property_id}
+                onChange={(e) => handleInputChange('property_id', e.target.value.toUpperCase())}
+                placeholder="e.g., PROP-2024-001"
+                required
+                helperText="Unique identifier for this property"
+                inputProps={{ 
+                  maxLength: 100,
+                  pattern: '[A-Z0-9_-]+'
+                }}
+              />
             </Grid>
             
             <Grid item xs={12} sm={4}>
@@ -2460,30 +2981,36 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Button>
                   </Grid>
                   
-                  {capturedPhoto && (
-                    <Grid item xs={12} sm={6}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <img 
-                          src={capturedPhoto} 
-                          alt="Captured" 
-                          style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
-                        />
-                        <Typography variant="caption" display="block">
-                          Photo captured successfully
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          size="small"
-                          startIcon={<Clear />}
-                          onClick={clearCapturedPhoto}
-                          sx={{ mt: 1 }}
-                        >
-                          Clear Photo
-                        </Button>
-                      </Box>
-                    </Grid>
-                  )}
+                  {capturedPhoto && (() => {
+                    console.log(`🖼️ Rendering owner photo: ${capturedPhoto ? 'data available' : 'no data'}`);
+                    console.log(`📊 Owner photo data length: ${capturedPhoto ? capturedPhoto.length : 0}`);
+                    return (
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <img 
+                            src={capturedPhoto} 
+                            alt="Captured" 
+                            style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
+                            onLoad={() => console.log('✅ Owner photo image loaded successfully')}
+                            onError={(e) => console.error('❌ Owner photo image failed to load:', e)}
+                          />
+                          <Typography variant="caption" display="block">
+                            Photo captured successfully
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            startIcon={<Clear />}
+                            onClick={clearCapturedPhoto}
+                            sx={{ mt: 1 }}
+                          >
+                            Clear Photo
+                          </Button>
+                        </Box>
+                      </Grid>
+                    );
+                  })()}
                 </Grid>
                 
                 {capturedPhoto && (
@@ -2515,28 +3042,33 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   {signatureData ? '✍️ Edit Signature' : '✍️ Add Signature'}
                 </Button>
                 
-                {signatureData && (
-                  <Box sx={{ textAlign: 'center' }}>
-                    <img 
-                      src={signatureData} 
-                      alt="Signature" 
-                      style={{ border: '1px solid #ccc', maxWidth: '300px' }}
-                    />
-                    <Typography variant="caption" display="block">
-                      Signature captured
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      size="small"
-                      startIcon={<Clear />}
-                      onClick={clearSignature}
-                      sx={{ mt: 1 }}
-                    >
-                      Clear Signature
-                    </Button>
-                  </Box>
-                )}
+                {signatureData && (() => {
+                  console.log(`🖼️ Rendering signature image: ${signatureData ? 'data available' : 'no data'}`);
+                  return (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <img 
+                        src={signatureData} 
+                        alt="Signature" 
+                        style={{ border: '1px solid #ccc', maxWidth: '300px' }}
+                        onLoad={() => console.log('✅ Signature image loaded successfully')}
+                        onError={(e) => console.error('❌ Signature image failed to load:', e)}
+                      />
+                      <Typography variant="caption" display="block">
+                        Signature captured
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        startIcon={<Clear />}
+                        onClick={clearSignature}
+                        sx={{ mt: 1 }}
+                      >
+                        Clear Signature
+                      </Button>
+                    </Box>
+                  );
+                })()}
               </Paper>
             </Grid>
             
@@ -2587,33 +3119,40 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     </Button>
                   </Grid>
                   
-                                    {(sketchPhoto || sketchPhotoBase64) && (
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ textAlign: 'center' }}>
-                          <img 
-                            src={sketchPhoto || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
-                          alt="Sketch" 
-                          style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
-                        />
-                        <Typography variant="caption" display="block">
-                          {sketchPhoto ? 'Sketch photo captured successfully' : 'Existing sketch photo loaded'}
-                          </Typography>
-                          <Button
-                            variant="outlined"
-                          color="error"
-                            size="small"
-                            startIcon={<Clear />}
-                            onClick={() => {
-                              setSketchPhoto(null);
-                            setSketchPhotoBase64(null);
-                            }}
-                            sx={{ mt: 1 }}
-                          >
-                          Clear Photo
-                          </Button>
-                        </Box>
-                    </Grid>
-                  )}
+                                    {(sketchPhoto || sketchPhotoBase64) && (() => {
+                  console.log(`🖼️ Rendering sketch image: sketchPhoto=${sketchPhoto ? 'available' : 'null'}, sketchPhotoBase64=${sketchPhotoBase64 ? 'available' : 'null'}`);
+                  return (
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ textAlign: 'center' }}>
+                            <img 
+                              src={sketchPhoto || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
+                            alt="Sketch" 
+                            style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
+                            onLoad={() => console.log('✅ Sketch image loaded successfully')}
+                            onError={(e) => console.error('❌ Sketch image failed to load:', e)}
+                          />
+                            <Typography variant="caption" display="block">
+                              {sketchPhoto ? 'Sketch photo captured successfully' : 'Existing sketch photo loaded'}
+                              </Typography>
+                              {sketchPhotoImageId && (
+                                <Typography variant="caption" display="block" sx={{ color: 'success.main' }}>
+                                  ✅ Uploaded to GitLab (ID: {sketchPhotoImageId.substring(0, 8)}...)
+                                </Typography>
+                              )}
+                              <Button
+                                variant="outlined"
+                              color="error"
+                                size="small"
+                                startIcon={<Clear />}
+                                onClick={clearSketchPhoto}
+                                sx={{ mt: 1 }}
+                              >
+                              Clear Photo
+                              </Button>
+                            </Box>
+                        </Grid>
+                      );
+                    })()}
                 </Grid>
                 
                 {(sketchPhoto || sketchPhotoBase64) && (
@@ -2651,8 +3190,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     �� Basic Information
                   </Typography>
                   <Typography variant="body2">
+                    <strong>Property ID:</strong> {formData.property_id}
+                  </Typography>
+                  <Typography variant="body2">
                     <strong>Survey Number:</strong> {formData.survey_number}
-                      </Typography>
+                  </Typography>
                   <Typography variant="body2">
                     <strong>Owner Name:</strong> {formData.owner_name}
                   </Typography>
@@ -2931,27 +3473,43 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         <DialogContent>
           <Box sx={{ textAlign: 'center', p: 3 }}>
             <Typography variant="body1" gutterBottom>
-              Position your sketch or drawing in front of the camera:
+              Choose how you want to capture the sketch photo:
             </Typography>
-                  
-                  <Button
-              variant="contained"
-                    startIcon={<PhotoCamera />}
-              onClick={captureSketchPhoto}
-              disabled={sketchPhotoCapturing}
-              fullWidth
-              sx={{ p: 2, mt: 2 }}
-            >
-              {sketchPhotoCapturing ? (
-                <>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Opening Camera...
-                </>
-              ) : (
-                '📸 Capture Sketch Photo'
-              )}
-                  </Button>
-                  
+            
+            <Grid container spacing={2} sx={{ mt: 2 }}>
+              <Grid item xs={12} sm={6}>
+                <Button
+                  variant="contained"
+                  startIcon={<PhotoCamera />}
+                  onClick={captureSketchPhoto}
+                  disabled={sketchPhotoCapturing}
+                  fullWidth
+                  sx={{ p: 2 }}
+                >
+                  {sketchPhotoCapturing ? (
+                    <>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      Opening Camera...
+                    </>
+                  ) : (
+                    '📸 Use Camera'
+                  )}
+                </Button>
+              </Grid>
+                
+              <Grid item xs={12} sm={6}>
+                <Button
+                  variant="outlined"
+                  startIcon={<PhotoCamera />}
+                  onClick={openSketchFileInput}
+                  fullWidth
+                  sx={{ p: 2 }}
+                >
+                  📁 Upload File
+                </Button>
+              </Grid>
+            </Grid>
+            
             {sketchPhotoCapturing && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">

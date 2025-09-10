@@ -29,6 +29,8 @@ export interface PropertyUseDetails {
 // Property types
 export interface Property {
   id: string;
+  // Property Identification
+  property_id: string;
   // Survey Identification
   survey_number: string;
   old_mc_property_number?: string;

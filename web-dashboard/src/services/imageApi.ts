@@ -111,7 +111,7 @@ export const imageApi = {
    * @returns Promise with image URL
    */
   getImageUrl: async (imageId: string): Promise<string> => {
-    const response = await imageApiClient.get(`/images/${imageId}/url`);
+    await imageApiClient.get(`/images/${imageId}/url`);
     return `${API_BASE_URL}/images/${imageId}`;
   },
 
