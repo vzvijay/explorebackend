@@ -329,32 +329,28 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         console.log('🏗️ Property use details set from editing property:', editingProperty.property_use_details);
       }
 
-      // Set signature data if available
-      if (editingProperty.signature_data) {
-        setSignatureData(editingProperty.signature_data);
-        console.log('✍️ Signature data set from editing property');
-      }
+      // Set images from new images array if available
+      if (editingProperty.images && editingProperty.images.length > 0) {
+        // Set signature data if available
+        const signatureImage = editingProperty.images.find(img => img.image_type === 'signature');
+        if (signatureImage) {
+          setSignatureData(signatureImage.gitlab_url);
+          console.log('✍️ Signature data set from editing property images');
+        }
 
-      // Set owner photo if available
-      if (editingProperty.owner_tenant_photo) {
-        setCapturedPhoto(editingProperty.owner_tenant_photo);
-        console.log('📸 Owner photo set from editing property');
-      }
+        // Set owner photo if available
+        const ownerImage = editingProperty.images.find(img => img.image_type === 'owner_photo');
+        if (ownerImage) {
+          setCapturedPhoto(ownerImage.gitlab_url);
+          console.log('📸 Owner photo set from editing property images');
+        }
 
-      // Set sketch photo if available
-      if (editingProperty.sketch_photo) {
-        // ✅ SIMPLIFIED: sketch_photo is now a simple base64 string like owner_tenant_photo
-        // Convert base64 string to displayable format for edit mode
-        const dataUrl = `data:image/png;base64,${editingProperty.sketch_photo}`;
-        setSketchPhoto(dataUrl);
-        // Create Base64ImageData structure for compatibility
-        setSketchPhotoBase64({
-          data: editingProperty.sketch_photo,
-          size: editingProperty.sketch_photo.length,
-          type: 'image/png',
-          filename: 'sketch_photo.png'
-        });
-        console.log('🎨 Sketch photo set from editing property (simplified)');
+        // Set sketch photo if available
+        const sketchImage = editingProperty.images.find(img => img.image_type === 'sketch_photo');
+        if (sketchImage) {
+          setSketchPhoto(sketchImage.gitlab_url);
+          console.log('🎨 Sketch photo set from editing property images');
+        }
       }
 
       console.log('✅ Form data populated successfully for edit mode');

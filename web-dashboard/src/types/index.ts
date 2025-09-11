@@ -123,6 +123,9 @@ export interface Property {
   survey_date: string;
   created_at?: string;
   updated_at?: string;
+  
+  // Images Array (New GitLab-based storage)
+  images?: PropertyImage[];
 }
 
 export interface PropertyImage {
