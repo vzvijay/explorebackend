@@ -28,7 +28,6 @@ import {
 } from '@mui/icons-material';
 import { Property } from '../types';
 import api from '../services/api';
-import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 
 const PropertyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -477,6 +476,40 @@ const PropertyDetailPage: React.FC = () => {
                       cursor: 'pointer'
                     }}
                     onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'owner_photo')?.gitlab_url!)}
+                  />
+                </Box>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Signature */}
+          {property.images?.find(img => img.image_type === 'signature') && (
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <AssignmentIcon sx={{ mr: 1 }} />
+                  Signature
+                </Typography>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <img
+                    src={property.images?.find(img => img.image_type === 'signature')?.gitlab_url}
+                    alt="Owner Signature"
+                    style={{
+                      width: '100%',
+                      maxWidth: '200px',
+                      height: 'auto',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      border: '2px solid #e0e0e0'
+                    }}
+                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'signature')?.gitlab_url!)}
+                    onError={(e) => {
+                      console.error('❌ Error loading signature:', e);
+                    }}
+                    onLoad={() => {
+                      console.log('✅ Signature loaded successfully from GitLab');
+                    }}
                   />
                 </Box>
               </CardContent>
