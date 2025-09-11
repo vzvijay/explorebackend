@@ -406,21 +406,46 @@ const PropertyDetailPage: React.FC = () => {
               </Typography>
               
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                <SketchPhotoDisplay
-                  sketchPhotoPath={property.sketch_photo || null}
-                  sketchPhotoBase64={property.sketch_photo ? {
-                    data: property.sketch_photo,
-                    size: property.sketch_photo.length,
-                    type: 'image/png',
-                    filename: 'sketch_photo.png'
-                  } : null}
-                  capturedAt={property.sketch_photo_captured_at || null}
-                  surveyNumber={property.survey_number}
-                  ownerName={property.owner_name}
-                  showMetadata={true}
-                  size="medium"
-                  downloadable={true}
-                />
+                {property.images?.find(img => img.image_type === 'sketch_photo') ? (
+                  <img
+                    src={property.images.find(img => img.image_type === 'sketch_photo')?.gitlab_url}
+                    alt={`Sketch photo for survey ${property.survey_number}`}
+                    style={{
+                      width: '200px',
+                      height: '150px',
+                      objectFit: 'cover',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      border: '2px solid #e0e0e0'
+                    }}
+                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'sketch_photo')?.gitlab_url!)}
+                    onError={(e) => {
+                      console.error('❌ Error loading sketch photo:', e);
+                    }}
+                    onLoad={() => {
+                      console.log('✅ Sketch photo loaded successfully from GitLab');
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      width: '200px',
+                      height: '150px',
+                      border: '2px dashed #ccc',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#f5f5f5'
+                    }}
+                  >
+                    <PhotoCameraIcon sx={{ fontSize: 40, color: '#999', mb: 1 }} />
+                    <Typography variant="body2" color="text.secondary">
+                      No Sketch Photo
+                    </Typography>
+                  </Box>
+                )}
               </Box>
               
               {property.sketch_photo_captured_at && (
@@ -432,7 +457,7 @@ const PropertyDetailPage: React.FC = () => {
           </Card>
 
           {/* Owner Photo */}
-          {property.owner_tenant_photo && (
+          {property.images?.find(img => img.image_type === 'owner_photo') && (
             <Card sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
@@ -442,7 +467,7 @@ const PropertyDetailPage: React.FC = () => {
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                   <img
-                    src={property.owner_tenant_photo}
+                    src={property.images?.find(img => img.image_type === 'owner_photo')?.gitlab_url}
                     alt="Owner/Tenant Photo"
                     style={{
                       width: '100%',
@@ -451,7 +476,7 @@ const PropertyDetailPage: React.FC = () => {
                       borderRadius: '8px',
                       cursor: 'pointer'
                     }}
-                    onClick={() => handlePhotoView(property.owner_tenant_photo!)}
+                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'owner_photo')?.gitlab_url!)}
                   />
                 </Box>
               </CardContent>
