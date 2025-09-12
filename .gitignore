@@ -1,0 +1,39 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+*.env
+env.*
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Uploads
+uploads/
+src/uploads/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
