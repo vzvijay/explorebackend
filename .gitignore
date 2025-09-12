@@ -1,0 +1,57 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+*.env
+env.*
+
+# Backend sensitive files
+backend/env.*
+backend/*.log
+backend/server.log
+backend/backend.log
+backend/update-render-env.sh
+backend/check-env.js
+backend/check-user.js
+backend/create-user.js
+backend/create-field-executives.js
+backend/create-users.js
+backend/renderAdminUserCreation.js
+backend/renderFieldExecutiveCreation.js
+backend/test-gitlab-service.js
+backend/test-local.js
+backend/fix-sketch-photo-column.js
+backend/docker-compose.local.yml
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Uploads
+uploads/
+src/uploads/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
