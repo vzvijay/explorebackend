@@ -27,7 +27,14 @@ const Property = sequelize.define('Property', {
   // Survey Identification
   survey_number: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined || value.trim() === '')) {
+          throw new Error('Survey number is required for submitted surveys');
+        }
+      }
+    }
     // Removed unique: true to allow duplicate survey numbers
   },
   old_mc_property_number: {
@@ -124,7 +131,7 @@ const Property = sequelize.define('Property', {
   // Zone Information
   zone: {
     type: DataTypes.CHAR(1),
-    allowNull: false,
+    allowNull: true,
     defaultValue: 'A',
     validate: {
       isValidZone: function(value) {
@@ -133,6 +140,11 @@ const Property = sequelize.define('Property', {
         const zoneRegex = /^[A-Z]$/;
         if (!zoneRegex.test(value)) {
           throw new Error('Zone must be a single uppercase letter A-Z');
+        }
+      },
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Zone is required for submitted surveys');
         }
       }
     }
