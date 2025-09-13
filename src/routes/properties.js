@@ -637,7 +637,7 @@ const propertyUpdateValidation = [
 
 // Review validation
 const reviewValidation = [
-  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
+  param('id').matches(/^[a-zA-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   body('action')
     .isIn(['approve', 'reject'])
     .withMessage('Action must be either approve or reject'),
@@ -667,7 +667,7 @@ router.post('/',
 // Get single property by ID
 router.get('/:id', 
   authenticateToken, 
-  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
+  param('id').matches(/^[a-zA-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   checkPropertyAccess,
   getPropertyById
 );
@@ -675,7 +675,7 @@ router.get('/:id',
 // Update property
 router.put('/:id', 
   authenticateToken, 
-  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
+  param('id').matches(/^[a-zA-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   cleanEmptyStrings,
   propertyUpdateValidation,
   checkPropertyAccess,
@@ -686,7 +686,7 @@ router.put('/:id',
 router.patch('/:id/submit', 
   authenticateToken, 
   authorizeRoles('field_executive'),
-  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
+  param('id').matches(/^[a-zA-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   checkPropertyAccess,
   submitProperty
 );

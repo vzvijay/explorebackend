@@ -223,10 +223,15 @@ const getProperties = async (req, res) => {
 const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
-    // Getting property by ID
+    // Getting property by ID - handle both UUID and property_id
+    
+    // Check if id is a UUID (contains hyphens and lowercase letters)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    
+    const whereClause = isUUID ? { id: id } : { property_id: id };
 
     const property = await Property.findOne({ 
-      where: { property_id: id },
+      where: whereClause,
       include: [
         {
           model: User,
