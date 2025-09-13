@@ -7,6 +7,8 @@ env.*
 
 # Backend sensitive files
 backend/env.*
+!backend/env.production.template
+!backend/env.local.template
 backend/*.log
 backend/server.log
 backend/backend.log
