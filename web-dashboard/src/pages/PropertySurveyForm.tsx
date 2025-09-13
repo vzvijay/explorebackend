@@ -259,13 +259,13 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   // Helper function to get image URL (use backend proxy for existing images)
-  const getImageUrl = (imageId: string | null, fallbackUrl: string | null): string | null => {
+  const getImageUrl = (imageId: string | null, fallbackUrl: string | null): string | undefined => {
     if (imageId) {
       // Use backend image proxy for existing images
       const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       return `${apiBaseUrl}/api/images/${imageId}`;
     }
-    return fallbackUrl;
+    return fallbackUrl || undefined;
   };
 
   // useEffect to populate form data when editing property
