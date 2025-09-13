@@ -1,19 +1,19 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+// Import environment configuration
+const getEnvironmentConfig = require('../config/environment');
+const config = getEnvironmentConfig();
+
 let sequelize;
 
-// Debug: Log environment variables (remove in production)
-console.log('🔍 Environment check:');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('DB_HOST:', process.env.DB_HOST);
+// Environment configuration loaded
 
-// Check if DATABASE_URL is available (production)
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
-  sequelize = new Sequelize(process.env.DATABASE_URL, {
+// Check if DATABASE_URL is available
+if (config.databaseUrl && config.databaseUrl.trim() !== '') {
+  const sequelizeConfig = {
     dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    logging: config.logging.enableConsole ? console.log : false,
     pool: {
       max: 5,
       min: 0,
@@ -23,16 +23,22 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     define: {
       timestamps: true,
       underscored: true
-    },
-    dialectOptions: {
+    }
+  };
+  
+  // Only add SSL for remote databases (production)
+  if (!config.isLocalDatabase) {
+    sequelizeConfig.dialectOptions = {
       ssl: {
         require: true,
         rejectUnauthorized: false
       }
-    }
-  });
+    };
+  }
+  
+  sequelize = new Sequelize(config.databaseUrl, sequelizeConfig);
 } else {
-  console.log('⚠️ DATABASE_URL not found, using fallback configuration');
+  // Using fallback database configuration
   // Fallback to individual environment variables (development/local)
   sequelize = new Sequelize({
     host: process.env.DB_HOST || 'localhost',
@@ -41,7 +47,7 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     username: process.env.DB_USER || 'survey_user',
     password: process.env.DB_PASSWORD || 'password',
     dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    logging: config.logging.enableConsole ? console.log : false,
     pool: {
       max: 5,
       min: 0,
@@ -51,9 +57,6 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     define: {
       timestamps: true,
       underscored: true
-    },
-    dialectOptions: {
-      ssl: false  // Disable SSL for local development
     }
   });
 }
