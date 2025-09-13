@@ -51,6 +51,9 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     define: {
       timestamps: true,
       underscored: true
+    },
+    dialectOptions: {
+      ssl: false  // Disable SSL for local development
     }
   });
 }
