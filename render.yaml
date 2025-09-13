@@ -4,6 +4,7 @@ services:
     env: docker
     plan: free
     region: singapore
+    branch: onlygpsissue
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -19,7 +20,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 24h
       - key: CORS_ORIGIN
-        value: https://web-dashboard-smoky.vercel.app  # ✅ FIXED
+        value: https://web-dashboard-smoky.vercel.app
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX_REQUESTS
@@ -33,18 +34,18 @@ services:
       - key: GITLAB_TOKEN
         value: glpat-M-x8JDB9kfH_6-G6aYIXO286MQp1Omh5anNkCw.01.1210lx81y
       - key: GITLAB_PROJECT_ID
-        value: 74298992  # ✅ ADDED
+        value: 74298992
       - key: GITLAB_API_URL
-        value: https://gitlab.com/api/v4  # ✅ ADDED
+        value: https://gitlab.com/api/v4
       - key: GITLAB_REPO_PATH
-        value: images/properties  # ✅ ADDED
+        value: images/properties
       - key: GITLAB_BRANCH
-        value: main  # ✅ ADDED
+        value: main
       - key: API_BASE_URL
-        value: https://explorebackend-qy7b.onrender.com  # ✅ ADDED
+        value: https://explorebackend-qy7b.onrender.com
 
 databases:
-  - name: maharashtra-survey-db
-    databaseName: maharashtra_survey_db
+  - name: explorebackend-db
+    databaseName: explorebackend_db
     user: survey_user
     plan: free
