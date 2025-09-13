@@ -24,7 +24,8 @@ import {
   CheckCircle,
   Schedule,
   Cancel,
-  Edit
+  Edit,
+  Visibility
 } from '@mui/icons-material';
 import { propertiesApi } from '../services/api';
 import { Property } from '../types';
@@ -118,6 +119,11 @@ const DashboardPage: React.FC = () => {
   const handleEditProperty = (property: Property) => {
     // Navigate to edit form
     window.location.href = `/properties/${property.id}/edit`;
+  };
+
+  const handleViewProperty = (property: Property) => {
+    // Navigate to property detail view
+    window.location.href = `/properties/${property.id}`;
   };
 
   return (
@@ -342,6 +348,16 @@ const DashboardPage: React.FC = () => {
                       <TableCell>{property.ward_number}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
+                          {/* View Button - Available for all users */}
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Visibility />}
+                            onClick={() => handleViewProperty(property)}
+                          >
+                            View
+                          </Button>
+                          
                           {/* Edit Button for Field Executives (Always Editable System) */}
                           {user?.role === 'field_executive' && property.surveyed_by === user.id && (
                             <Button
