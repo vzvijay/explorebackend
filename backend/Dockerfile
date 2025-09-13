@@ -11,7 +11,7 @@ COPY package.json package-lock.json ./
 RUN ls -la package*.json
 
 # Install dependencies
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm install --omit=dev --ignore-scripts
 
 # Copy source code
 COPY src/ ./src/
