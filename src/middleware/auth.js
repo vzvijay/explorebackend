@@ -73,7 +73,7 @@ const checkPropertyAccess = async (req, res, next) => {
     // Field executives can only access properties they surveyed
     if (role === 'field_executive') {
       const { Property } = require('../models');
-      const property = await Property.findByPk(propertyId);
+      const property = await Property.findOne({ where: { property_id: propertyId } });
       
       if (!property) {
         return res.status(404).json({ 

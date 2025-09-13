@@ -70,9 +70,9 @@ router.post('/upload',
 /**
  * Get image by ID (serve image data)
  * GET /api/images/:id
+ * Note: No authentication required for public image access
  */
 router.get('/:id',
-  authenticateToken,
   getImage
 );
 

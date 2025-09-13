@@ -30,8 +30,8 @@ const propertyValidation = [
   body('property_id')
     .notEmpty()
     .withMessage('Property ID is required')
-    .isLength({ min: 3, max: 100 })
-    .withMessage('Property ID must be between 3 and 100 characters')
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Property ID must be between 1 and 100 characters')
     .matches(/^[A-Z0-9-_]+$/)
     .withMessage('Property ID can only contain uppercase letters, numbers, hyphens, and underscores'),
   // Basic Information
@@ -45,6 +45,13 @@ const propertyValidation = [
     .optional()
     .isLength({ max: 50 }),
   body('owner_name')
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && value.trim().length > 0; // Require for submissions
+    })
+    .withMessage('Owner name is required for submitted surveys')
     .isLength({ max: 100 })
     .withMessage('Owner name must be less than 100 characters'),
   body('owner_father_name')
@@ -54,13 +61,27 @@ const propertyValidation = [
     .optional()
     .isLength({ max: 15 }),
   body('owner_email')
-    .optional()
-    .isEmail()
-    .withMessage('Valid email is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return require('validator').isEmail(value); // Validate email format if provided
+    })
+    .withMessage('Valid email is required for submitted surveys'),
   body('aadhar_number')
-    .optional()
-    .matches(/^\d{4}-\d{4}-\d{4}$/)
-    .withMessage('Aadhar number must be in format 1234-5678-9012'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return /^\d{4}-\d{4}-\d{4}$/.test(value); // Validate format if provided
+    })
+    .withMessage('Aadhar number must be in format 1234-5678-9012 for submitted surveys'),
   
   // Address
   body('house_number')
@@ -70,28 +91,65 @@ const propertyValidation = [
     .optional()
     .isLength({ max: 100 }),
   body('locality')
-    .notEmpty()
-    .withMessage('Locality is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && value.trim().length > 0; // Require for submissions
+    })
+    .withMessage('Locality is required for submitted surveys'),
   body('ward_number')
-    .isInt({ min: 1 })
-    .withMessage('Valid ward number is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && !isNaN(value) && parseInt(value) >= 1; // Require for submissions
+    })
+    .withMessage('Valid ward number is required for submitted surveys'),
   body('pincode')
-    .isLength({ min: 6, max: 6 })
-    .isNumeric()
-    .withMessage('Pincode must be 6 digits'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && value.length === 6 && /^\d{6}$/.test(value); // Require for submissions
+    })
+    .withMessage('Pincode must be 6 digits for submitted surveys'),
   
   // Property Details
   body('property_type')
-    .isIn(['residential', 'commercial', 'industrial', 'mixed', 'institutional'])
-    .withMessage('Valid property type is required'),
+    .custom((value, { req }) => {
+      console.log('🔍 Property Type Validation:', { value, survey_status: req.body.survey_status });
+      if (req.body.survey_status === 'draft') {
+        console.log('✅ Allowing null for draft');
+        return true; // Allow null/empty for drafts
+      }
+      console.log('❌ Requiring validation for submission');
+      return value && ['residential', 'commercial', 'industrial', 'mixed', 'institutional'].includes(value);
+    })
+    .withMessage('Valid property type is required for submitted surveys'),
   body('construction_type')
-    .optional()
-    .isIn(['rcc', 'load_bearing', 'tin_patra', 'kaccha'])
-    .withMessage('Valid construction type is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return ['rcc', 'load_bearing', 'tin_patra', 'kaccha'].includes(value); // Validate if provided
+    })
+    .withMessage('Valid construction type is required for submitted surveys'),
   body('construction_year')
-    .optional()
-    .isInt({ min: 1900, max: new Date().getFullYear() })
-    .withMessage('Valid construction year is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      const year = parseInt(value);
+      return !isNaN(year) && year >= 1900 && year <= new Date().getFullYear(); // Validate if provided
+    })
+    .withMessage('Valid construction year is required for submitted surveys'),
   body('number_of_floors')
     .optional()
     .isInt({ min: 1, max: 20 })
@@ -132,14 +190,29 @@ const propertyValidation = [
   
   // Area Measurements
   body('plot_area')
-    .isFloat({ min: 0 })
-    .withMessage('Plot area must be a positive number'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && !isNaN(value) && parseFloat(value) >= 0; // Require for submissions
+    })
+    .withMessage('Plot area must be a positive number for submitted surveys'),
   body('built_up_area')
-    .isFloat({ min: 0 })
-    .withMessage('Built-up area must be a positive number'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && !isNaN(value) && parseFloat(value) >= 0; // Require for submissions
+    })
+    .withMessage('Built-up area must be a positive number for submitted surveys'),
   body('carpet_area')
-    .isFloat({ min: 0 })
-    .withMessage('Carpet area must be a positive number'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      return value && !isNaN(value) && parseFloat(value) >= 0; // Require for submissions
+    })
+    .withMessage('Carpet area must be a positive number for submitted surveys'),
   
   // Property Use Details (JSON)
   body('property_use_details')
@@ -148,8 +221,15 @@ const propertyValidation = [
   
   // Utility Connections
   body('water_connection')
-    .optional()
-    .isIn([0, 1, 2, 3]),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      return [0, 1, 2, 3].includes(parseInt(value)); // Validate if provided
+    }),
   body('water_connection_number')
     .optional()
     .isLength({ max: 50 }),
@@ -196,11 +276,27 @@ const propertyValidation = [
   
   // Location
   body('latitude')
-    .optional()
-    .isFloat({ min: -90, max: 90 }),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      const lat = parseFloat(value);
+      return !isNaN(lat) && lat >= -90 && lat <= 90; // Validate if provided
+    }),
   body('longitude')
-    .optional()
-    .isFloat({ min: -180, max: 180 }),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      const lng = parseFloat(value);
+      return !isNaN(lng) && lng >= -180 && lng <= 180; // Validate if provided
+    }),
   
   // Photos and Signatures
   body('owner_tenant_photo')
@@ -257,13 +353,27 @@ const propertyValidation = [
 
 // Temporary lenient validation rules for debugging
 const lenientPropertyValidation = [
-  // Only validate the most critical fields
+  // Only validate the most critical fields for submitted surveys
   body('owner_name')
-    .notEmpty()
-    .withMessage('Owner name is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        throw new Error('Owner name is required for submitted surveys');
+      }
+      return true;
+    }),
   body('locality')
-    .notEmpty()
-    .withMessage('Locality is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        throw new Error('Locality is required for submitted surveys');
+      }
+      return true;
+    }),
   // Make all other fields optional for now
 ];
 
@@ -290,13 +400,27 @@ const propertyUpdateValidation = [
     .optional()
     .isLength({ max: 15 }),
   body('owner_email')
-    .optional()
-    .isEmail()
-    .withMessage('Valid email is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return require('validator').isEmail(value); // Validate email format if provided
+    })
+    .withMessage('Valid email is required for submitted surveys'),
   body('aadhar_number')
-    .optional()
-    .matches(/^\d{4}-\d{4}-\d{4}$/)
-    .withMessage('Aadhar number must be in format 1234-5678-9012'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return /^\d{4}-\d{4}-\d{4}$/.test(value); // Validate format if provided
+    })
+    .withMessage('Aadhar number must be in format 1234-5678-9012 for submitted surveys'),
   
   // Address
   body('house_number')
@@ -306,47 +430,67 @@ const propertyUpdateValidation = [
     .optional()
     .isLength({ max: 100 }),
   body('locality')
-    .optional()
-    .notEmpty()
-    .withMessage('Locality cannot be empty'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        throw new Error('Locality cannot be empty for submitted surveys');
+      }
+      return true;
+    }),
   body('ward_number')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Valid ward number is required'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      const wardNum = parseInt(value);
+      return !isNaN(wardNum) && wardNum >= 1; // Validate if provided
+    })
+    .withMessage('Valid ward number is required for submitted surveys'),
   body('pincode')
-    .optional()
-    .isLength({ min: 6, max: 6 })
-    .isNumeric()
-    .withMessage('Pincode must be 6 digits'),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (!value || value.trim() === '') {
+        return true; // Allow empty for optional field
+      }
+      return /^\d{6}$/.test(value); // Validate 6 digits if provided
+    })
+    .withMessage('Pincode must be 6 digits for submitted surveys'),
   body('zone')
     .optional()
     .isIn(['A', 'B', 'C', 'D']),
   
-  // Property Details
-  body('property_type')
-    .optional()
-    .isIn(['residential', 'commercial', 'industrial', 'mixed', 'institutional'])
-    .withMessage('Valid property type is required'),
-  body('plot_area')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Plot area must be a positive number'),
-  body('built_up_area')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Built-up area must be a positive number'),
-  body('carpet_area')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Carpet area must be a positive number'),
+  // Property Details - Duplicate validation rules removed (already handled above)
   
   // Additional fields that frontend sends during updates
   body('latitude')
-    .optional()
-    .isFloat({ min: -90, max: 90 }),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      const lat = parseFloat(value);
+      return !isNaN(lat) && lat >= -90 && lat <= 90; // Validate if provided
+    }),
   body('longitude')
-    .optional()
-    .isFloat({ min: -180, max: 180 }),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      const lng = parseFloat(value);
+      return !isNaN(lng) && lng >= -180 && lng <= 180; // Validate if provided
+    }),
   body('signature_data')
     .optional()
     .isLength({ max: 1000000 }),
@@ -365,12 +509,7 @@ const propertyUpdateValidation = [
   body('property_use_details')
     .optional()
     .isObject(),
-  body('construction_type')
-    .optional()
-    .isIn(['rcc', 'load_bearing', 'tin_patra', 'kaccha']),
-  body('construction_year')
-    .optional()
-    .isInt({ min: 1900, max: new Date().getFullYear() }),
+  // construction_type and construction_year validation removed (already handled above)
   body('number_of_floors')
     .optional()
     .isInt({ min: 1, max: 20 }),
@@ -406,8 +545,15 @@ const propertyUpdateValidation = [
     })
     .withMessage('Valid date format required (DD/MM/YYYY or YYYY-MM-DD) or leave empty'),
   body('water_connection')
-    .optional()
-    .isIn([0, 1, 2, 3]),
+    .custom((value, { req }) => {
+      if (req.body.survey_status === 'draft') {
+        return true; // Allow null/empty for drafts
+      }
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow empty for optional field
+      }
+      return [0, 1, 2, 3].includes(parseInt(value)); // Validate if provided
+    }),
   body('water_connection_number')
     .optional()
     .isLength({ max: 50 }),
@@ -491,7 +637,7 @@ const propertyUpdateValidation = [
 
 // Review validation
 const reviewValidation = [
-  param('id').isUUID().withMessage('Valid property ID is required'),
+  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   body('action')
     .isIn(['approve', 'reject'])
     .withMessage('Action must be either approve or reject'),
@@ -521,7 +667,7 @@ router.post('/',
 // Get single property by ID
 router.get('/:id', 
   authenticateToken, 
-  param('id').isUUID().withMessage('Valid property ID is required'),
+  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   checkPropertyAccess,
   getPropertyById
 );
@@ -529,7 +675,7 @@ router.get('/:id',
 // Update property
 router.put('/:id', 
   authenticateToken, 
-  param('id').isUUID().withMessage('Valid property ID is required'),
+  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   cleanEmptyStrings,
   propertyUpdateValidation,
   checkPropertyAccess,
@@ -540,7 +686,7 @@ router.put('/:id',
 router.patch('/:id/submit', 
   authenticateToken, 
   authorizeRoles('field_executive'),
-  param('id').isUUID().withMessage('Valid property ID is required'),
+  param('id').matches(/^[A-Z0-9-_]+$/).withMessage('Valid property ID is required'),
   checkPropertyAccess,
   submitProperty
 );

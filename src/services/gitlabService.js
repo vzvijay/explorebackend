@@ -45,16 +45,12 @@ class GitLabService {
       const year = now.getUTCFullYear();
       const month = String(now.getUTCMonth() + 1).padStart(2, '0');
       
-      console.log(`📅 Date debugging:`);
-      console.log(`   Current date: ${now.toISOString()}`);
-      console.log(`   Local date: ${now.toString()}`);
-      console.log(`   Year: ${year}, Month: ${month}`);
-      console.log(`   Timezone offset: ${now.getTimezoneOffset()} minutes`);
+      // Date processing for file path
       
       // Create GitLab file path with property ID folder structure
       const gitlabFilePath = `${this.repoPath}/${year}/${month}/${propertyId}/${uniqueFileName}`;
       
-      console.log(`📁 GitLab file path: ${gitlabFilePath}`);
+      // GitLab file path generated
       
       // Encode file path for GitLab API
       const encodedFilePath = encodeURIComponent(gitlabFilePath);
@@ -69,7 +65,7 @@ class GitLabService {
         author_name: 'Survey App System'
       };
 
-      console.log(`📤 Uploading ${imageType} to GitLab: ${gitlabFilePath}`);
+      // Uploading to GitLab
       
       // Upload to GitLab
       const response = await this.client.post(
@@ -81,8 +77,7 @@ class GitLabService {
         // Generate public URL for the image
         const publicUrl = this.generateImageUrl(gitlabFilePath);
         
-        console.log(`✅ Successfully uploaded ${imageType} to GitLab`);
-        console.log(`🔗 Public URL: ${publicUrl}`);
+        // Successfully uploaded to GitLab
         
         return {
           success: true,
@@ -97,7 +92,7 @@ class GitLabService {
       }
       
     } catch (error) {
-      console.error(`❌ Error uploading ${imageType} to GitLab:`, error.message);
+      console.error('Error uploading to GitLab:', error.message);
       
       if (error.response) {
         console.error('GitLab API Error:', error.response.data);
@@ -118,6 +113,7 @@ class GitLabService {
       const encodedFilePath = encodeURIComponent(gitlabFilePath);
       
       console.log(`📥 Fetching image from GitLab: ${gitlabFilePath}`);
+      console.log(`📥 Encoded path: ${encodedFilePath}`);
       
       const response = await this.client.get(
         `/projects/${this.projectId}/repository/files/${encodedFilePath}/raw`,
@@ -187,8 +183,9 @@ class GitLabService {
   generateImageUrl(gitlabFilePath) {
     // GitLab raw file URL format
     const baseUrl = this.apiUrl.replace('/api/v4', '');
-    const encodedPath = encodeURIComponent(gitlabFilePath);
-    return `${baseUrl}/api/v4/projects/${this.projectId}/repository/files/${encodedPath}/raw?ref=${this.branch}`;
+    // URL encode the file path for GitLab API
+    const encodedFilePath = encodeURIComponent(gitlabFilePath);
+    return `${baseUrl}/api/v4/projects/${this.projectId}/repository/files/${encodedFilePath}/raw?ref=${this.branch}`;
   }
 
   /**

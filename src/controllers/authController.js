@@ -14,8 +14,7 @@ const generateToken = (userId) => {
 // Login user
 const login = async (req, res) => {
   try {
-    console.log('🔍 Login attempt - Request body:', req.body);
-    console.log('🔍 Login attempt - Headers:', req.headers);
+    // Login attempt received
     
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -32,24 +31,17 @@ const login = async (req, res) => {
     // Clean the email/username field - remove @ symbol if frontend sends it
     const cleanEmail = email.startsWith('@') ? email.substring(1) : email;
     
-    console.log('🔍 Login attempt - Original Email/Username:', email);
-    console.log('🔍 Login attempt - Cleaned Email/Username:', cleanEmail);
-    console.log('🔍 Login attempt - Password length:', password ? password.length : 0);
+    // Login attempt received
 
     // Find user by cleaned email
     const user = await User.findOne({ 
       where: { email: cleanEmail, is_active: true } 
     });
 
-    console.log('🔍 User lookup result:', user ? {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      is_active: user.is_active
-    } : 'User not found');
+    // User lookup completed
 
     if (!user) {
-      console.log('❌ User not found or inactive');
+      // User not found or inactive
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -57,26 +49,24 @@ const login = async (req, res) => {
     }
 
     // Check password
-    console.log('🔍 Attempting password comparison...');
+    // Attempting password comparison
     const isValidPassword = await user.comparePassword(password);
-    console.log('🔍 Password comparison result:', isValidPassword);
     
     if (!isValidPassword) {
-      console.log('❌ Invalid password');
+      // Invalid password
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    console.log('✅ Password verified successfully');
+    // Password verified successfully
 
     // Update last login
     await user.update({ last_login: new Date() });
 
     // Generate token
     const token = generateToken(user.id);
-    console.log('🔍 JWT token generated, length:', token.length);
 
     // Return user data (excluding password)
     const userData = {
@@ -90,7 +80,7 @@ const login = async (req, res) => {
       department: user.assigned_area
     };
 
-    console.log('✅ Login successful for user:', user.email);
+    // Login successful
     res.json({
       success: true,
       message: 'Login successful',

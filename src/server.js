@@ -5,7 +5,14 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-require('dotenv').config();
+// Load environment variables - only in development
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: './env.local' });
+}
+
+// Import environment configuration
+const getEnvironmentConfig = require('./config/environment');
+const config = getEnvironmentConfig();
 
 // Import database
 const sequelize = require('./database/config');
@@ -16,7 +23,7 @@ try {
   require('./models');
   modelsInitialized = true;
 } catch (error) {
-  console.log('⚠️ Models not initialized - database connection failed');
+  // Models not initialized - database connection failed
 }
 
 // Import routes
@@ -28,7 +35,7 @@ const adminRoutes = require('./routes/admin');
 const migrationRoutes = require('./routes/migrations');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
 
 // Security middleware
 app.use(helmet({
@@ -37,17 +44,17 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "http://localhost:3000", "https:"],
+      imgSrc: ["'self'", "data:", "https:"],
       styleSrc: ["'self'", "'unsafe-inline'", "https:"],
       scriptSrc: ["'self'"],
-      connectSrc: ["'self'", "http://localhost:3000"]
+      connectSrc: ["'self'"]
     }
   }
 }));
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:3002'],
+  origin: config.corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -59,7 +66,7 @@ app.options('*', cors());
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300, // limit each IP to 300 requests per windowMs
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -71,7 +78,7 @@ app.use(limiter);
 app.use(compression());
 
 // Logging middleware
-if (process.env.NODE_ENV === 'development') {
+if (config.logging.enableConsole) {
   app.use(morgan('dev'));
 } else {
   app.use(morgan('combined'));
@@ -92,7 +99,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
     }
     
     // Allow cross-origin access for images
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.setHeader('Access-Control-Allow-Origin', config.corsOrigins.join(', '));
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -114,41 +121,14 @@ app.get('/health', (req, res) => {
     success: true,
     message: 'Maharashtra Survey Management API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-    database: modelsInitialized ? 'connected' : 'disconnected'
+    environment: config.environment,
+    apiBaseUrl: config.apiBaseUrl,
+    database: modelsInitialized ? 'connected' : 'disconnected',
+    corsOrigins: config.corsOrigins
   });
 });
 
-// Debug endpoint for file serving
-app.get('/debug/uploads', (req, res) => {
-  const uploadsPath = path.join(__dirname, '..', 'uploads');
-  const sketchesPath = path.join(uploadsPath, 'sketches');
-  
-  try {
-    const fs = require('fs');
-    const sketches = fs.readdirSync(sketchesPath);
-    
-    res.json({
-      success: true,
-      __dirname: __dirname,
-      uploadsPath: uploadsPath,
-      sketchesPath: sketchesPath,
-      sketches: sketches.slice(0, 5), // Show first 5 files
-      exists: {
-        uploads: fs.existsSync(uploadsPath),
-        sketches: fs.existsSync(sketchesPath)
-      }
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message,
-      __dirname: __dirname,
-      uploadsPath: uploadsPath,
-      sketchesPath: sketchesPath
-    });
-  }
-});
+// Debug endpoint removed for production security
 
 // Specific route for sketch photos to ensure proper CORS headers
 app.get('/uploads/sketches/:filename', (req, res) => {
@@ -156,7 +136,7 @@ app.get('/uploads/sketches/:filename', (req, res) => {
   const filePath = path.join(__dirname, '..', 'uploads', 'sketches', filename);
   
   // Set CORS headers explicitly
-  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+  res.setHeader('Access-Control-Allow-Origin', config.corsOrigins.join(', '));
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -199,7 +179,7 @@ app.use('*', (req, res) => {
 
 // Global error handler
 app.use((error, req, res, next) => {
-  console.error('Global error handler:', error);
+  console.error('Global error handler:', error.message);
   
   // Handle Sequelize validation errors
   if (error.name === 'SequelizeValidationError') {
@@ -248,54 +228,57 @@ app.use((error, req, res, next) => {
 // Database connection and server startup
 async function startServer() {
   try {
+    // Validate environment variables
+    config.validate();
+    // Environment validation passed
+
     // Test database connection
     await sequelize.authenticate();
-    console.log('✓ Database connection established successfully');
+    // Database connection established successfully
 
     // Sync database models (create tables if they don't exist)
-    if (process.env.NODE_ENV === 'development') {
+    if (config.isDevelopment) {
       // Use force: false to avoid altering existing tables
       // Skip sync for now due to enum type conflict
-      console.log('⚠️ Skipping database sync due to enum type conflict');
+      // Skipping database sync due to enum type conflict
       // await sequelize.sync({ force: false });
-      // console.log('✓ Database models synchronized (no alterations)');
+      // Database models synchronized (no alterations)
     }
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-      console.log(`📝 API Docs: http://localhost:${PORT}/api`);
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${config.environment.toUpperCase()}`);
+      console.log(`API Base URL: ${config.apiBaseUrl}`);
     });
 
   } catch (error) {
-    console.error('❌ Unable to start server:', error);
+    console.error('Unable to start server:', error.message);
     process.exit(1);
   }
 }
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  console.error('Uncaught Exception:', error.message);
   process.exit(1);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection:', reason);
   process.exit(1);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  // SIGTERM received, shutting down gracefully
   await sequelize.close();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
+  // SIGINT received, shutting down gracefully
   await sequelize.close();
   process.exit(0);
 });

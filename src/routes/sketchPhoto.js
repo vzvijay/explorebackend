@@ -66,7 +66,7 @@ router.post('/:propertyId', auth, upload.single('sketch_photo'), async (req, res
       });
     }
 
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -103,7 +103,7 @@ router.post('/:propertyId', auth, upload.single('sketch_photo'), async (req, res
     });
 
   } catch (error) {
-    console.error('Error uploading sketch photo:', error);
+    console.error('Error uploading sketch photo:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to upload sketch photo',
@@ -141,7 +141,7 @@ router.post('/:propertyId/base64', auth, async (req, res) => {
     }
 
     // Check if property exists
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -175,7 +175,7 @@ router.post('/:propertyId/base64', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error saving Base64 sketch photo:', error);
+    console.error('Error saving Base64 sketch photo:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to save sketch photo',
@@ -188,7 +188,7 @@ router.post('/:propertyId/base64', auth, async (req, res) => {
 router.get('/:propertyId', auth, async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     
     if (!property) {
       return res.status(404).json({
@@ -222,7 +222,7 @@ router.get('/:propertyId', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting sketch photo:', error);
+    console.error('Error getting sketch photo:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get sketch photo',
@@ -235,7 +235,7 @@ router.get('/:propertyId', auth, async (req, res) => {
 router.delete('/:propertyId', auth, async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     
     if (!property) {
       return res.status(404).json({
@@ -264,9 +264,9 @@ router.delete('/:propertyId', auth, async (req, res) => {
     try {
       const fullPath = path.join(process.cwd(), property.sketch_photo);
       await fs.unlink(fullPath);
-      console.log(`Sketch photo file removed: ${fullPath}`);
+      // Sketch photo file removed
     } catch (fileError) {
-      console.warn(`Warning: Could not remove sketch photo file: ${fileError.message}`);
+      console.warn('Warning: Could not remove sketch photo file:', fileError.message);
     }
 
     await property.update({
@@ -281,7 +281,7 @@ router.delete('/:propertyId', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error removing sketch photo:', error);
+    console.error('Error removing sketch photo:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to remove sketch photo',

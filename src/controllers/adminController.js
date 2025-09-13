@@ -72,7 +72,7 @@ const getPendingApprovals = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching pending approvals:', error);
+    console.error('Error fetching pending approvals:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch pending approvals',
@@ -89,7 +89,7 @@ const approveProperty = async (req, res) => {
     const adminUserId = req.user.id;
 
     // Find the property
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -128,7 +128,7 @@ const approveProperty = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error approving property:', error);
+    console.error('Error approving property:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to approve property survey',
@@ -153,7 +153,7 @@ const rejectProperty = async (req, res) => {
     }
 
     // Find the property
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -194,7 +194,7 @@ const rejectProperty = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error rejecting property:', error);
+    console.error('Error rejecting property:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to reject property survey',
@@ -266,7 +266,7 @@ const getApprovalStats = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching approval stats:', error);
+    console.error('Error fetching approval stats:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch approval statistics',
@@ -280,7 +280,8 @@ const getPropertyForApproval = async (req, res) => {
   try {
     const { propertyId } = req.params;
 
-    const property = await Property.findByPk(propertyId, {
+    const property = await Property.findOne({ 
+      where: { property_id: propertyId },
       include: [
         {
           model: User,
@@ -305,7 +306,7 @@ const getPropertyForApproval = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching property for approval:', error);
+    console.error('Error fetching property for approval:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch property details',

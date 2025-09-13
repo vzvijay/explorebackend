@@ -1,13 +1,59 @@
 const { PropertyImage, Property } = require('../models');
 const gitlabService = require('../services/gitlabService');
 const { validationResult } = require('express-validator');
+const getEnvironmentConfig = require('../config/environment');
+const config = getEnvironmentConfig();
+
+/**
+ * Clean up old image of specific type for a property
+ * @param {string} propertyId - Property ID
+ * @param {string} imageType - Type of image (owner_photo, signature, sketch_photo)
+ * @returns {Promise<void>}
+ */
+const cleanupOldImage = async (propertyId, imageType) => {
+  try {
+    console.log(`🧹 Cleaning up old ${imageType} for property: ${propertyId}`);
+    
+    // Find existing image of this type for this property
+    const oldImage = await PropertyImage.findOne({
+      where: { 
+        property_id: propertyId, 
+        image_type: imageType 
+      }
+    });
+    
+    if (oldImage) {
+      console.log(`🗑️ Found old ${imageType}: ${oldImage.gitlab_file_path}`);
+      
+      try {
+        // Delete from GitLab
+        await gitlabService.deleteImage(oldImage.gitlab_file_path);
+        console.log(`✅ Deleted old ${imageType} from GitLab`);
+        
+        // Delete from database
+        await oldImage.destroy();
+        console.log(`✅ Deleted old ${imageType} from database`);
+        
+      } catch (deleteError) {
+        console.error(`❌ Error deleting old ${imageType}:`, deleteError.message);
+        // Don't throw error - continue with new upload even if cleanup fails
+      }
+    } else {
+      console.log(`ℹ️ No old ${imageType} found for property: ${propertyId}`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error in cleanupOldImage:`, error.message);
+    // Don't throw error - continue with new upload even if cleanup fails
+  }
+};
 
 /**
  * Upload image to GitLab and store metadata in database
  */
 const uploadImage = async (req, res) => {
   try {
-    console.log('📤 Image upload request received');
+    // Image upload request received
     
     // Check if file was uploaded
     if (!req.file) {
@@ -45,8 +91,10 @@ const uploadImage = async (req, res) => {
       });
     }
 
-    console.log(`📤 Uploading ${imageType} for property ${propertyId}`);
-    console.log(`📁 File: ${req.file.originalname}, Size: ${req.file.size} bytes`);
+    // Clean up old image of the same type if uploading a new one
+    await cleanupOldImage(propertyId, imageType);
+
+    // Uploading image for property
 
     // Upload to GitLab directly with property_id
     const uploadResult = await gitlabService.uploadImage(
@@ -69,7 +117,7 @@ const uploadImage = async (req, res) => {
       uploaded_by: req.user.id
     });
 
-    console.log(`✅ Image uploaded successfully. ID: ${imageRecord.id}`);
+    // Image uploaded successfully
 
     res.status(201).json({
       success: true,
@@ -87,7 +135,7 @@ const uploadImage = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Image upload error:', error);
+    console.error('Image upload error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to upload image',
@@ -103,53 +151,57 @@ const getImage = async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log(`📥 Image request for ID: ${id}`);
+    // Image request received
 
+    // PropertyImage model loaded
+    
+    // Test database connection with a simple query
+    try {
+      const testQuery = await PropertyImage.findAll({ limit: 1 });
+      // Database connection test successful
+    } catch (error) {
+      console.error('Database connection error:', error.message);
+    }
+    
     // Get image metadata from database
     const imageRecord = await PropertyImage.findByPk(id);
+    // Image record lookup completed
     
     if (!imageRecord) {
+      // Image not found in database
       return res.status(404).json({
         success: false,
         message: 'Image not found'
       });
     }
 
-    // Check if user has access to this image
-    const property = await Property.findByPk(imageRecord.property_id);
-    if (!property) {
-      return res.status(404).json({
-        success: false,
-        message: 'Property not found'
-      });
-    }
-
-    // Check access permissions
-    if (req.user.role === 'field_executive' && property.surveyed_by !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - you can only access images from your own surveys'
-      });
-    }
-
-    console.log(`📥 Fetching image from GitLab: ${imageRecord.gitlab_file_path}`);
+    // For public image access, we don't need to check property access
+    // Images are publicly accessible via the proxy
+    // Fetching image from GitLab
 
     // Fetch image from GitLab
+    console.log(`📥 Fetching image from GitLab: ${imageRecord.gitlab_file_path}`);
     const imageBuffer = await gitlabService.getImage(imageRecord.gitlab_file_path);
+    console.log(`✅ Image buffer received: ${imageBuffer.length} bytes`);
 
-    // Set appropriate headers
+    // Set appropriate headers including CORS
     res.set({
       'Content-Type': imageRecord.mime_type,
       'Content-Length': imageBuffer.length,
       'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-      'Content-Disposition': `inline; filename="${imageRecord.file_name}"`
+      'Content-Disposition': `inline; filename="${imageRecord.file_name}"`,
+      'Access-Control-Allow-Origin': config.corsOrigins.join(', '),
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true'
     });
 
     // Send image data
+    console.log(`📤 Sending image data: ${imageBuffer.length} bytes, Content-Type: ${imageRecord.mime_type}`);
     res.send(imageBuffer);
 
   } catch (error) {
-    console.error('❌ Image fetch error:', error);
+    console.error('Image fetch error:', error.message);
     
     if (error.message.includes('not found')) {
       return res.status(404).json({
@@ -173,10 +225,10 @@ const getPropertyImages = async (req, res) => {
   try {
     const { propertyId } = req.params;
 
-    console.log(`📥 Property images request for: ${propertyId}`);
+    // Property images request received
 
     // Check if property exists and user has access
-    const property = await Property.findByPk(propertyId);
+    const property = await Property.findOne({ where: { property_id: propertyId } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -214,7 +266,7 @@ const getPropertyImages = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Property images fetch error:', error);
+    console.error('Property images fetch error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch property images',
@@ -230,7 +282,7 @@ const deleteImage = async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log(`🗑️ Image deletion request for ID: ${id}`);
+    // Image deletion request received
 
     // Get image metadata from database
     const imageRecord = await PropertyImage.findByPk(id);
@@ -243,7 +295,7 @@ const deleteImage = async (req, res) => {
     }
 
     // Check if user has access to this image
-    const property = await Property.findByPk(imageRecord.property_id);
+    const property = await Property.findOne({ where: { property_id: imageRecord.property_id } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -265,7 +317,7 @@ const deleteImage = async (req, res) => {
     // Delete from database
     await imageRecord.destroy();
 
-    console.log(`✅ Image deleted successfully. ID: ${id}`);
+    // Image deleted successfully
 
     res.json({
       success: true,
@@ -273,7 +325,7 @@ const deleteImage = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Image deletion error:', error);
+    console.error('Image deletion error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to delete image',
@@ -300,7 +352,7 @@ const getImageUrl = async (req, res) => {
     }
 
     // Check if user has access to this image
-    const property = await Property.findByPk(imageRecord.property_id);
+    const property = await Property.findOne({ where: { property_id: imageRecord.property_id } });
     if (!property) {
       return res.status(404).json({
         success: false,
@@ -320,14 +372,14 @@ const getImageUrl = async (req, res) => {
     res.json({
       success: true,
       data: {
-        image_url: `/api/images/${imageRecord.id}`,
+        image_url: `${config.apiBaseUrl}/api/images/${imageRecord.id}`,
         file_name: imageRecord.file_name,
         mime_type: imageRecord.mime_type
       }
     });
 
   } catch (error) {
-    console.error('❌ Image URL fetch error:', error);
+    console.error('Image URL fetch error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get image URL',

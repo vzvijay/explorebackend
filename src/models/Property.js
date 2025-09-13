@@ -14,7 +14,7 @@ const Property = sequelize.define('Property', {
     unique: true,
     validate: {
       notEmpty: true,
-      len: [3, 100],
+      len: [1, 100],
       isAlphanumeric: function(value) {
         if (!value) return true;
         const propertyIdRegex = /^[A-Z0-9-_]+$/;
@@ -42,7 +42,14 @@ const Property = sequelize.define('Property', {
   // Owner Information
   owner_name: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined || value.trim() === '')) {
+          throw new Error('Owner name is required for submitted surveys');
+        }
+      }
+    }
   },
   owner_father_name: {
     type: DataTypes.STRING,
@@ -82,15 +89,36 @@ const Property = sequelize.define('Property', {
   },
   locality: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined || value.trim() === '')) {
+          throw new Error('Locality is required for submitted surveys');
+        }
+      }
+    }
   },
   ward_number: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Ward number is required for submitted surveys');
+        }
+      }
+    }
   },
   pincode: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined || value.trim() === '')) {
+          throw new Error('Pincode is required for submitted surveys');
+        }
+      }
+    }
   },
   
   // Zone Information
@@ -113,7 +141,14 @@ const Property = sequelize.define('Property', {
   // Property Details
   property_type: {
     type: DataTypes.ENUM('residential', 'commercial', 'industrial', 'mixed', 'institutional'),
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Property type is required for submitted surveys');
+        }
+      }
+    }
   },
   construction_type: {
     type: DataTypes.ENUM('rcc', 'load_bearing', 'tin_patra', 'kaccha'),
@@ -145,15 +180,36 @@ const Property = sequelize.define('Property', {
   // Area Measurements
   plot_area: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Plot area is required for submitted surveys');
+        }
+      }
+    }
   },
   built_up_area: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Built-up area is required for submitted surveys');
+        }
+      }
+    }
   },
   carpet_area: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
+    allowNull: true,
+    validate: {
+      customValidator: function(value) {
+        if (this.survey_status === 'submitted' && (value === null || value === undefined)) {
+          throw new Error('Carpet area is required for submitted surveys');
+        }
+      }
+    }
   },
   
   // Property Use Details (JSON field for dynamic rooms)

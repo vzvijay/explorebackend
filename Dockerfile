@@ -7,8 +7,8 @@ ARG CACHE_BUST=1
 # Set working directory
 WORKDIR /app
 
-# Copy package files from backend directory
-COPY backend/package.json backend/package-lock.json ./
+# Copy package files
+COPY package.json package-lock.json ./
 
 # Verify package files are copied
 RUN ls -la package*.json
@@ -16,11 +16,11 @@ RUN ls -la package*.json
 # Install dependencies (updated to use npm install instead of npm ci)
 RUN npm install --omit=dev --ignore-scripts
 
-# Copy source code from backend directory
-COPY backend/src/ ./src/
+# Copy source code
+COPY src/ ./src/
 
 # Copy environment file (production or local)
-COPY backend/env.production.template .env
+COPY env.production.template .env
 # For local testing, you can override with: COPY env.local .env
 
 # Create uploads directory

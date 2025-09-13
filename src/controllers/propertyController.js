@@ -7,13 +7,10 @@ const sequelize = require('../database/config');
 // Create new property survey
 const createProperty = async (req, res) => {
   try {
-    // Add debugging
-    console.log('📥 Received property data:', JSON.stringify(req.body, null, 2));
-    console.log('📥 Validation errors:', validationResult(req).array());
+    // Validation check (debug logging removed for production)
     
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Validation failed:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation errors',
@@ -55,10 +52,9 @@ const createProperty = async (req, res) => {
 
     // Debug and validate date fields
     const dateFields = ['bp_date', 'water_connection_date', 'sketch_photo_captured_at', 'approved_at', 'survey_date', 'last_edit_date'];
-    console.log('📅 Date field values:');
+    // Process date fields (debug logging removed for production)
     dateFields.forEach(field => {
       if (propertyData[field]) {
-        console.log(`  ${field}: ${propertyData[field]} (type: ${typeof propertyData[field]})`);
         
         // Convert string dates to Date objects if needed
         if (typeof propertyData[field] === 'string') {
@@ -94,16 +90,11 @@ const createProperty = async (req, res) => {
       }
     });
 
-    console.log('📝 Creating property with data:', {
-      ...propertyData,
-      owner_tenant_photo: propertyData.owner_tenant_photo ? `[Base64 data: ${propertyData.owner_tenant_photo.length} chars]` : null,
-      signature_data: propertyData.signature_data ? `[Base64 data: ${propertyData.signature_data.length} chars]` : null,
-      sketch_photo: propertyData.sketch_photo ? `[Base64 data: ${propertyData.sketch_photo.length} chars]` : null
-    });
+    // Creating property with validated data
 
     const property = await Property.create(propertyData);
 
-    console.log('✅ Property created successfully:', property.id);
+    // Property created successfully
 
     // No temporary image migration needed - images are uploaded directly with property_id
 
@@ -114,13 +105,7 @@ const createProperty = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Create property error:', error);
-    console.error('❌ Error details:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      validationErrors: error.errors
-    });
+    console.error('Create property error:', error.message);
     
     // Handle validation errors specifically
     if (error.name === 'SequelizeValidationError') {
@@ -226,7 +211,7 @@ const getProperties = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get properties error:', error);
+    console.error('Get properties error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -238,8 +223,10 @@ const getProperties = async (req, res) => {
 const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
+    // Getting property by ID
 
-    const property = await Property.findByPk(id, {
+    const property = await Property.findOne({ 
+      where: { property_id: id },
       include: [
         {
           model: User,
@@ -255,15 +242,25 @@ const getPropertyById = async (req, res) => {
           model: PropertyImage,
           as: 'images',
           attributes: ['id', 'image_type', 'gitlab_url', 'file_name', 'uploaded_at'],
-          order: [['uploaded_at', 'ASC']]
+          order: [['uploaded_at', 'DESC']]
         }
       ]
     });
+
+    // Property found with images
 
     if (!property) {
       return res.status(404).json({
         success: false,
         message: 'Property not found'
+      });
+    }
+
+    // Check access permissions for field executives
+    if (req.user.role === 'field_executive' && property.surveyed_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - you can only access your own surveys'
       });
     }
 
@@ -273,7 +270,7 @@ const getPropertyById = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get property by ID error:', error);
+    console.error('Get property by ID error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -311,7 +308,7 @@ const updateProperty = async (req, res) => {
           const year = match[3];
           const isoDateString = `${year}-${month}-${day}`;
           updateData[field] = new Date(isoDateString);
-          console.log(`🔄 Converted DD/MM/YYYY or DD-MM-YYYY format: ${updateData[field]} → ${isoDateString}`);
+          // Converted date format
         } else {
           // Try parsing as-is
           const dateValue = new Date(updateData[field]);
@@ -322,7 +319,7 @@ const updateProperty = async (req, res) => {
       }
     });
     
-    const property = await Property.findByPk(id);
+    const property = await Property.findOne({ where: { property_id: id } });
 
     if (!property) {
       return res.status(404).json({
@@ -365,7 +362,7 @@ const updateProperty = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update property error:', error);
+    console.error('Update property error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -377,7 +374,7 @@ const updateProperty = async (req, res) => {
 const submitProperty = async (req, res) => {
   try {
     const { id } = req.params;
-    const property = await Property.findByPk(id);
+    const property = await Property.findOne({ where: { property_id: id } });
 
     if (!property) {
       return res.status(404).json({
@@ -429,7 +426,7 @@ const submitProperty = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Submit property error:', error);
+    console.error('Submit property error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -443,7 +440,7 @@ const reviewProperty = async (req, res) => {
     const { id } = req.params;
     const { action, remarks } = req.body; // action: 'approve' or 'reject'
 
-    const property = await Property.findByPk(id);
+    const property = await Property.findOne({ where: { property_id: id } });
 
     if (!property) {
       return res.status(404).json({
@@ -475,7 +472,7 @@ const reviewProperty = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Review property error:', error);
+    console.error('Review property error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -527,7 +524,7 @@ const getDashboardStats = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get dashboard stats error:', error);
+    console.error('Get dashboard stats error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
