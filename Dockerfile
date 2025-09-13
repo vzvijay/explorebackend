@@ -14,7 +14,9 @@ COPY package.json package-lock.json ./
 RUN ls -la package*.json
 
 # Install dependencies (updated to use npm install instead of npm ci)
-RUN npm install --omit=dev --ignore-scripts
+# Install Sharp with platform-specific binaries for Alpine Linux
+RUN npm install --omit=dev --platform=linuxmusl --arch=x64 sharp
+RUN npm install --omit=dev
 
 # Copy source code
 COPY src/ ./src/
