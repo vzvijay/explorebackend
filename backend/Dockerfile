@@ -1,6 +1,9 @@
 # Use Node.js LTS version
 FROM node:18-alpine
 
+# Cache bust - force rebuild
+ARG CACHE_BUST=1
+
 # Set working directory
 WORKDIR /app
 
@@ -10,7 +13,7 @@ COPY package.json package-lock.json ./
 # Verify package files are copied
 RUN ls -la package*.json
 
-# Install dependencies
+# Install dependencies (updated to use npm install instead of npm ci)
 RUN npm install --omit=dev --ignore-scripts
 
 # Copy source code
