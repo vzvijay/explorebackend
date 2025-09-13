@@ -1,0 +1,210 @@
+// User types
+export interface User {
+  id: string;
+  employee_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: 'admin' | 'municipal_officer' | 'engineer' | 'field_executive';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Room details for property use
+export interface RoomDetail {
+  id: string;
+  length: number;
+  width: number;
+  area: number;
+}
+
+export interface PropertyUseDetails {
+  halls: RoomDetail[];
+  bedrooms: RoomDetail[];
+  kitchens: RoomDetail[];
+  shops: RoomDetail[];
+  bathrooms: RoomDetail[];
+}
+
+// Property types
+export interface Property {
+  id: string;
+  // Property Identification
+  property_id: string;
+  // Survey Identification
+  survey_number: string;
+  old_mc_property_number?: string;
+  register_no?: string;
+  
+  // Owner Information
+  owner_name: string;
+  owner_father_name?: string;
+  owner_phone?: string;
+  owner_email?: string;
+  aadhar_number?: string;
+  
+  // Property Address
+  house_number?: string;
+  street_name?: string;
+  locality: string;
+  ward_number: number;
+  pincode: string;
+  
+  // Property Details
+  property_type: 'residential' | 'commercial' | 'industrial' | 'mixed' | 'institutional';
+  construction_type?: 'rcc' | 'load_bearing' | 'tin_patra' | 'kaccha';
+  construction_year?: number | null;
+  number_of_floors: number;
+  
+  // Zone Information
+  zone?: string;
+  
+  // Building Permission
+  building_permission: boolean;
+  bp_number?: string;
+  bp_date?: string;
+  
+  // Area Measurements
+  plot_area: number;
+  built_up_area: number;
+  carpet_area: number;
+  
+  // Property Use Details
+  property_use_details?: PropertyUseDetails;
+  
+  // Utility Connections
+  water_connection?: number; // 1, 2, or 3
+  water_connection_number?: string;
+  water_connection_date?: string;
+  electricity_connection: boolean;
+  electricity_connection_number?: string;
+  sewage_connection: boolean;
+  solar_panel: boolean;
+  rain_water_harvesting: boolean;
+  
+  // Location
+  latitude?: number;
+  longitude?: number;
+  
+  // Photos and Signatures (Legacy Base64 - DEPRECATED)
+  owner_tenant_photo?: string | null;
+  signature_data?: string | null;
+  sketch_photo?: string | null; // Base64 encoded sketch photo data (same pattern as owner_tenant_photo)
+  sketch_photo_captured_at?: string | null;
+  
+  // Image References (New GitLab-based storage)
+  owner_photo_image_id?: string | null;
+  signature_image_id?: string | null;
+  sketch_photo_image_id?: string | null;
+  
+  // Tax Assessment
+  assessment_year?: number;
+  estimated_tax?: number;
+  
+  // Survey Status
+  survey_status: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected';
+  approval_status?: 'pending_approval' | 'approved' | 'rejected';
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
+  admin_notes?: string | null;
+  
+  // Edit Tracking
+  edit_count?: number;
+  last_edit_date?: string;
+  
+  // Additional Information
+  remarks?: string;
+  
+  // Survey Metadata
+  surveyed_by: string;
+  reviewed_by?: string;
+  review_remarks?: string;
+  survey_date: string;
+  created_at?: string;
+  updated_at?: string;
+  
+  // Images Array (New GitLab-based storage)
+  images?: PropertyImage[];
+}
+
+export interface PropertyImage {
+  id: string;
+  property_id: string;
+  image_type: 'owner_photo' | 'signature' | 'sketch_photo';
+  gitlab_file_path: string;
+  gitlab_url: string;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  created_at: string;
+}
+
+// Dashboard types
+export interface DashboardStats {
+  total_properties: number;
+  pending_review: number;
+  approved: number;
+  rejected: number;
+  draft: number;
+  total_tax_revenue: number;
+}
+
+// API Response types
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+  errors?: string[];
+}
+
+export interface Pagination {
+  current_page: number;
+  total_pages: number;
+  total_records: number;
+  per_page: number;
+}
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface PropertyFilters {
+  survey_status?: string;
+  property_type?: string;
+  ward_number?: number;
+  construction_type?: string;
+  building_permission?: boolean;
+}
+
+// Auth types
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  logout: () => void;
+  isLoading: boolean;
+}
+
+// Base64 Image types
+export interface Base64ImageData {
+  data: string; // Base64 encoded image
+  size: number; // File size in bytes
+  type: string; // MIME type
+  filename?: string; // Optional filename
+}
+
+export interface ImageUploadResult {
+  success: boolean;
+  base64Data?: Base64ImageData;
+  error?: string;
+  message?: string;
+} 
