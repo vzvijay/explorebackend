@@ -34,7 +34,6 @@ const EditPropertyPage: React.FC = () => {
       const response = await propertiesApi.getProperty(id!);
       setProperty(response.data.property);
     } catch (error: any) {
-      console.error('Error loading property:', error);
       setError('Failed to load property data');
       toast.error('Failed to load property data');
     } finally {
