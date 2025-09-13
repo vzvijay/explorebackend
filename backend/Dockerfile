@@ -5,10 +5,13 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
+
+# Verify package files are copied
+RUN ls -la package*.json
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy source code
 COPY src/ ./src/
