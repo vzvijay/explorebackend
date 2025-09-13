@@ -181,11 +181,9 @@ class GitLabService {
    * @returns {string} Public URL
    */
   generateImageUrl(gitlabFilePath) {
-    // GitLab raw file URL format
-    const baseUrl = this.apiUrl.replace('/api/v4', '');
-    // URL encode the file path for GitLab API
+    // GitLab raw file URL format - use the full API URL directly
     const encodedFilePath = encodeURIComponent(gitlabFilePath);
-    return `${baseUrl}/api/v4/projects/${this.projectId}/repository/files/${encodedFilePath}/raw?ref=${this.branch}`;
+    return `${this.apiUrl}/projects/${this.projectId}/repository/files/${encodedFilePath}/raw?ref=${this.branch}`;
   }
 
   /**
