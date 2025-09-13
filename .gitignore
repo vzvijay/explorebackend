@@ -4,9 +4,13 @@
 !.env.example
 *.env
 env.*
+!env.production.template
+!env.local.template
 
 # Backend sensitive files
 backend/env.*
+!backend/env.production.template
+!backend/env.local.template
 backend/*.log
 backend/server.log
 backend/backend.log
