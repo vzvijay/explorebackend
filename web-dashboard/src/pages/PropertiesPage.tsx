@@ -87,7 +87,6 @@ const PropertiesPage: React.FC = () => {
       setProperties(response.data.properties || []);
       setTotalPages(response.data.pagination?.total_pages || 1);
     } catch (error: any) {
-      console.error('Error loading properties:', error);
       toast.error('Failed to load properties');
       setProperties([]);
     } finally {
@@ -129,20 +128,19 @@ const PropertiesPage: React.FC = () => {
 
   const handleEditProperty = (property: Property) => {
     // Navigate to edit form
-    window.location.href = `/properties/${property.id}/edit`;
+    window.location.href = `/properties/${property.property_id}/edit`;
   };
 
   const submitReview = async () => {
     if (!selectedProperty) return;
 
     try {
-      await propertiesApi.reviewProperty(selectedProperty.id, reviewAction, reviewRemarks);
+      await propertiesApi.reviewProperty(selectedProperty.property_id, reviewAction, reviewRemarks);
       toast.success(`Property ${reviewAction}d successfully!`);
       setReviewDialogOpen(false);
       setReviewRemarks('');
       loadProperties();
     } catch (error: any) {
-      console.error('Error reviewing property:', error);
       toast.error(`Failed to ${reviewAction} property`);
     }
   };

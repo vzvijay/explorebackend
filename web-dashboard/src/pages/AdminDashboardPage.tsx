@@ -123,7 +123,6 @@ const AdminDashboardPage: React.FC = () => {
         setTotalCount(response.data.pagination.total_count);
       }
     } catch (error) {
-      console.error('Error loading pending approvals:', error);
       toast.error('Failed to load pending approvals');
     } finally {
       setLoading(false);
@@ -141,7 +140,6 @@ const AdminDashboardPage: React.FC = () => {
       });
       setApprovalStats(stats);
     } catch (error) {
-      console.error('Error loading approval stats:', error);
       toast.error('Failed to load approval statistics');
     } finally {
       setStatsLoading(false);
@@ -164,7 +162,6 @@ const AdminDashboardPage: React.FC = () => {
         loadApprovalStats();
       }
     } catch (error) {
-      console.error('Error approving property:', error);
       toast.error('Failed to approve property');
     } finally {
       setActionLoading(false);
@@ -195,7 +192,6 @@ const AdminDashboardPage: React.FC = () => {
         loadApprovalStats();
       }
     } catch (error) {
-      console.error('Error rejecting property:', error);
       toast.error('Failed to reject property');
     } finally {
       setActionLoading(false);
@@ -211,7 +207,6 @@ const AdminDashboardPage: React.FC = () => {
         setPropertyDetailsDialog(true);
       }
     } catch (error) {
-      console.error('Error loading property details:', error);
       toast.error('Failed to load property details');
     }
   };

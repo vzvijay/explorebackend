@@ -78,7 +78,6 @@ const DashboardPage: React.FC = () => {
       setStats(newStats);
       
     } catch (error: any) {
-      console.error('Error loading dashboard data:', error);
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -118,12 +117,12 @@ const DashboardPage: React.FC = () => {
 
   const handleEditProperty = (property: Property) => {
     // Navigate to edit form
-    window.location.href = `/properties/${property.id}/edit`;
+    window.location.href = `/properties/${property.property_id}/edit`;
   };
 
   const handleViewProperty = (property: Property) => {
     // Navigate to property details page
-    navigate(`/properties/${property.id}`);
+    navigate(`/properties/${property.property_id}`);
   };
 
   return (

@@ -167,6 +167,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // const [uploadingImage, setUploadingImage] = useState<string | null>(null); // Track which image is uploading
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
+  // Auto-save state
+  const [autoSaveEnabled] = useState(true);
+  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+  const [isUserTyping, setIsUserTyping] = useState(false);
+  
   // Form data state
   const [formData, setFormData] = useState<FormData>({
     property_id: `PROP-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
@@ -253,15 +258,26 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     return false;
   };
 
+  // Helper function to get image URL (use backend proxy for existing images)
+  const getImageUrl = (imageId: string | null, fallbackUrl: string | null): string | null => {
+    if (imageId) {
+      // Use backend image proxy for existing images
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      return `${apiBaseUrl}/api/images/${imageId}`;
+    }
+    return fallbackUrl;
+  };
+
   // useEffect to populate form data when editing property
   useEffect(() => {
     if (editingProperty && isEditMode) {
-      console.log('🔄 Populating form with editing property data:', editingProperty);
+      // Populating form with editing property data
       
       // Populate form data with fetched property data
       setFormData(prev => ({
         ...prev,
         // Basic information fields
+        property_id: editingProperty.property_id || '',
         survey_number: editingProperty.survey_number || '',
         old_mc_property_number: editingProperty.old_mc_property_number || '',
         register_no: editingProperty.register_no || '',
@@ -313,50 +329,63 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const lng = parseFloat(editingProperty.longitude);
         if (!isNaN(lat) && !isNaN(lng)) {
           setLocation({ lat, lng });
-          console.log('📍 GPS location set from editing property:', { lat, lng });
+          // GPS location set from editing property
         }
       }
 
       // Set address from GPS data if available
       if (editingProperty.address) {
         setCapturedAddress(editingProperty.address);
-        console.log('🏠 Address set from editing property:', editingProperty.address);
+        // Address set from editing property
       }
 
       // Set property use details if available
       if (editingProperty.property_use_details) {
         setPropertyUse(editingProperty.property_use_details);
-        console.log('🏗️ Property use details set from editing property:', editingProperty.property_use_details);
+        // Property use details set from editing property
       }
 
       // Set images from new images array if available
       if (editingProperty.images && editingProperty.images.length > 0) {
         // Set signature data if available
-        const signatureImage = editingProperty.images.find(img => img.image_type === 'signature');
+        const signatureImage = editingProperty.images.find((img: any) => img.image_type === 'signature');
         if (signatureImage) {
           setSignatureData(signatureImage.gitlab_url);
-          console.log('✍️ Signature data set from editing property images');
+          setSignatureImageId(signatureImage.id);
+          // Signature data set from editing property images
         }
 
         // Set owner photo if available
-        const ownerImage = editingProperty.images.find(img => img.image_type === 'owner_photo');
+        const ownerImage = editingProperty.images.find((img: any) => img.image_type === 'owner_photo');
         if (ownerImage) {
           setCapturedPhoto(ownerImage.gitlab_url);
-          console.log('📸 Owner photo set from editing property images');
+          setOwnerPhotoImageId(ownerImage.id);
+          // Owner photo set from editing property images
         }
 
         // Set sketch photo if available
-        const sketchImage = editingProperty.images.find(img => img.image_type === 'sketch_photo');
+        const sketchImage = editingProperty.images.find((img: any) => img.image_type === 'sketch_photo');
         if (sketchImage) {
           setSketchPhoto(sketchImage.gitlab_url);
-          console.log('🎨 Sketch photo set from editing property images');
+          setSketchPhotoImageId(sketchImage.id);
+          // Sketch photo set from editing property images
         }
       }
 
-      console.log('✅ Form data populated successfully for edit mode');
+      // Form data populated successfully for edit mode
     }
   }, [editingProperty, isEditMode]);
 
+  // Auto-save useEffect
+  useEffect(() => {
+    if (!autoSaveEnabled || isUserTyping) return;
+
+    const interval = setInterval(() => {
+      autoSaveDraft();
+    }, 5000); // Auto-save every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [formData, autoSaveEnabled, isEditMode, isUserTyping, ownerPhotoImageId, signatureImageId, sketchPhotoImageId]);
 
   // Utility functions
   const validateAadhar = (aadhar: string): boolean => {
@@ -411,6 +440,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Set typing state and clear it after 2 seconds of inactivity
+    setIsUserTyping(true);
+    const timeoutId = setTimeout(() => {
+      setIsUserTyping(false);
+    }, 2000);
+    
+    // Store timeout ID for cleanup
+    if ((window as any).typingTimeout) {
+      clearTimeout((window as any).typingTimeout);
+    }
+    (window as any).typingTimeout = timeoutId;
   };
 
   // Enhanced GPS implementation with mobile-specific optimizations
@@ -427,10 +468,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       return;
     }
 
-    console.log('🔍 Starting GPS location capture...');
-    console.log('Browser:', navigator.userAgent);
-    console.log('Protocol:', window.location.protocol);
-    console.log('Hostname:', window.location.hostname);
+    // Starting GPS location capture
 
     setLocationLoading(true);
     setLocationError(null);
@@ -449,7 +487,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     // iOS Safari often needs more time
     const timeout = isIOS ? 20000 : (isMobile ? 15000 : 10000);
     
-    console.log(`📱 Device type - Mobile: ${isMobile}, iOS: ${isIOS}, Timeout: ${timeout}ms`);
 
     // First attempt with high accuracy
       navigator.geolocation.getCurrentPosition(
@@ -584,7 +621,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=${zoom}&addressdetails=1&accept-language=en`;
         
-        console.log(`🌍 Address lookup attempt ${retryCount + 1}, URL:`, url);
         
         const response = await fetch(url, {
           headers: {
@@ -597,7 +633,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         }
         
         const data = await response.json();
-        console.log('📍 Geocoding response:', data);
         
         if (data.display_name) {
           processAddressData(data);
@@ -642,7 +677,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     const address = data.display_name;
     const addressParts = data.address;
     
-    console.log('📍 Processing address data:', addressParts);
     
     // Extract address components with fallbacks
     const streetNumber = addressParts?.house_number || '';
@@ -710,10 +744,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Test GPS with detailed diagnostics
   const testGPSFunctionality = () => {
-    console.log('🔍 Testing GPS functionality...');
-    console.log('Navigator geolocation support:', !!navigator.geolocation);
-    console.log('Current protocol:', window.location.protocol);
-    console.log('User agent:', navigator.userAgent);
     
     if (!navigator.geolocation) {
       toast.error('Geolocation not supported by this browser');
@@ -772,7 +802,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       timestamp: new Date().toISOString()
     };
     
-    console.log('📊 GPS Debug Info:', info);
     return info;
   };
 
@@ -829,15 +858,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Smart compression based on image type
   const smartCompressImage = (canvas: HTMLCanvasElement, imageType: 'sketch' | 'owner' | 'signature'): string => {
-    console.log(`🔧 Smart compression starting for ${imageType}`);
-    console.log(`📐 Original canvas size: ${canvas.width}x${canvas.height}`);
     
     // Check if original canvas has content
     const originalCtx = canvas.getContext('2d');
     if (originalCtx) {
       const imageData = originalCtx.getImageData(0, 0, canvas.width, canvas.height);
       const hasContent = imageData.data.some(pixel => pixel !== 0);
-      console.log(`🔍 Original canvas has content: ${hasContent}`);
       
       if (!hasContent) {
         console.error('❌ Original canvas is empty/black');
@@ -854,7 +880,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     const config = configs[imageType];
     const { maxWidth, maxHeight, quality } = config;
     
-    console.log(`⚙️ Compression config: maxWidth=${maxWidth}, maxHeight=${maxHeight}, quality=${quality}`);
     
     // Calculate new dimensions maintaining aspect ratio
     const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
@@ -874,20 +899,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       throw new Error('Canvas context not available');
     }
     
-    console.log(`🎨 Canvas context created: ${ctx ? 'success' : 'failed'}`);
     
     // Draw with high quality
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(canvas, 0, 0, newWidth, newHeight);
     
-    console.log(`🖼️ Image drawn to new canvas`);
     
     // Apply manual brightness enhancement
     const imageData = ctx.getImageData(0, 0, newWidth, newHeight);
     const data = imageData.data;
     
-    console.log(`🔧 Applying manual brightness enhancement...`);
     
     // Brightness and contrast enhancement
     const brightnessMultiplier = 1.4; // 40% brighter
@@ -919,7 +941,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     // Check if new canvas has content
     const newImageData = ctx.getImageData(0, 0, newWidth, newHeight);
     const newHasContent = newImageData.data.some(pixel => pixel !== 0);
-    console.log(`🔍 New canvas has content: ${newHasContent}`);
     
     if (!newHasContent) {
       console.error('❌ New canvas is empty/black after compression');
@@ -928,7 +949,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     
     const dataUrl = newCanvas.toDataURL('image/jpeg', quality);
     
-    console.log(`📊 Compressed image size: ${dataUrl.length} characters`);
     console.log(`🔍 Data URL preview: ${dataUrl.substring(0, 100)}...`);
     
     return dataUrl;
@@ -1005,18 +1025,15 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         throw new Error('Property ID is required for image upload');
       }
       
-      console.log(`📤 Uploading ${imageType} to GitLab for property ${propertyId}...`);
       
       const uploadResult = await imageApi.uploadImage(
         file, 
         propertyId, 
         imageType,
-        (progress) => {
-          console.log(`📤 Upload progress: ${progress}%`);
+        () => {
         }
       );
       
-      console.log(`✅ ${imageType} uploaded successfully:`, uploadResult.data.image);
       
       // Call success callback with image ID
       onSuccess(uploadResult.data.image.id);
@@ -1055,7 +1072,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         });
         
         // Wait for video to actually start playing and have content
-        console.log(`⏳ Waiting for video stream to have content...`);
         toast.info('Waiting for camera to stabilize...');
         
         let attempts = 0;
@@ -1075,10 +1091,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
               const hasContent = testImageData.data.some(pixel => pixel !== 0);
               
-              console.log(`🔍 Video content check attempt ${attempts + 1}: ${hasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
               
               if (hasContent) {
-                console.log(`✅ Video stream has content! Proceeding with capture.`);
                 break;
               }
             }
@@ -1103,7 +1117,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         toast.info('Camera ready! Position the person in frame and click capture.');
         
         // TEST: Add video element to DOM temporarily to see if video stream works
-        console.log(`🧪 TEST: Adding video element to DOM for visual inspection`);
         video.style.position = 'fixed';
         video.style.top = '10px';
         video.style.right = '10px';
@@ -1117,7 +1130,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         setTimeout(() => {
           if (video.parentNode) {
             video.parentNode.removeChild(video);
-            console.log(`🧪 TEST: Video element removed from DOM`);
           }
         }, 5000);
         
@@ -1127,24 +1139,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const ctx = canvas.getContext('2d');
         
         if (ctx) {
-          console.log(`📸 Drawing video to canvas: ${canvas.width}x${canvas.height}`);
           
           // TEST: Check video element properties before drawing
-          console.log(`🧪 VIDEO TEST: Video element properties:`);
-          console.log(`   video.videoWidth: ${video.videoWidth}`);
-          console.log(`   video.videoHeight: ${video.videoHeight}`);
-          console.log(`   video.readyState: ${video.readyState}`);
-          console.log(`   video.currentTime: ${video.currentTime}`);
-          console.log(`   video.paused: ${video.paused}`);
-          console.log(`   video.ended: ${video.ended}`);
           
           // CRITICAL: Wait for video to actually have content before drawing
-          console.log(`⏳ Waiting for video to have actual content before drawing...`);
           let drawAttempts = 0;
           const maxDrawAttempts = 150; // 15 seconds max - camera needs even more time to warm up
           
           // Add initial delay to let camera fully initialize
-          console.log(`⏳ Initial camera initialization delay: 2 seconds...`);
           toast.info('Initializing camera... Please wait');
           
           const tryDrawVideo = () => {
@@ -1185,11 +1187,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               const brightnessRange = maxBrightness - minBrightness;
               const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
               
-              console.log(`🔍 Draw attempt ${drawAttempts + 1}:`);
               console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
               console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
-              console.log(`   Non-zero pixels: ${nonZeroPixels}`);
-              console.log(`   Has content: ${hasContent ? 'YES' : 'NO'}`);
               
               // Show progress every 10 attempts
               if ((drawAttempts + 1) % 10 === 0) {
@@ -1199,9 +1198,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               }
               
               if (hasContent) {
-                console.log(`✅ Video has meaningful content! Drawing to main canvas...`);
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                console.log(`✅ Video drawn to canvas successfully`);
                 
                 // Process the image immediately after successful drawing
                 processCapturedImage();
@@ -1226,11 +1223,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             // Test: Check if canvas has content immediately after drawing
             const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const hasContent = testImageData.data.some(pixel => pixel !== 0);
-            console.log(`🔍 Canvas content check: ${hasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
             
             if (!hasContent) {
               console.error('❌ Canvas is empty after drawing video!');
-              console.log(`📊 ImageData length: ${testImageData.data.length}`);
               console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
               toast.error('Camera is producing black frames. Please check camera and try again.');
               setPhotoCapturing(false);
@@ -1239,31 +1234,23 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             
             // Apply smart compression with fallback
             let compressedDataUrl;
-            console.log(`🔧 Starting compression process for owner photo`);
-            console.log(`📐 Canvas dimensions: ${canvas.width}x${canvas.height}`);
             
             // SIMPLE TEST: Use basic JPEG with high quality
-            console.log(`🧪 SIMPLE TEST: Using basic JPEG with maximum quality`);
             compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
-            console.log(`🧪 Simple JPEG dataUrl length: ${compressedDataUrl ? compressedDataUrl.length : 0}`);
             console.log(`🧪 DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
             
             // Check if canvas has content
             const rawImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const rawHasContent = rawImageData.data.some(pixel => pixel !== 0);
-            console.log(`🧪 Canvas content check: ${rawHasContent ? 'HAS CONTENT' : 'NO CONTENT'}`);
             
             if (rawHasContent) {
               console.log(`🧪 Canvas first 20 pixels:`, Array.from(rawImageData.data.slice(0, 20)));
             }
             
-            console.log(`🖼️ Setting capturedPhoto for display: ${compressedDataUrl ? 'success' : 'failed'}`);
             console.log(`🖼️ CompressedDataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
             setCapturedPhoto(compressedDataUrl); // Keep for display
-            console.log(`🖼️ capturedPhoto state set, current value: ${capturedPhoto}`);
             
             // TEST: Create a test image element to see if the dataUrl works
-            console.log(`🧪 TEST: Creating test image element to verify dataUrl`);
             const testImg = document.createElement('img');
             testImg.src = compressedDataUrl;
             testImg.style.position = 'fixed';
@@ -1274,17 +1261,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             testImg.style.border = '2px solid blue';
             testImg.style.zIndex = '9999';
             testImg.onload = () => {
-              console.log(`🧪 TEST: Test image loaded successfully!`);
               document.body.appendChild(testImg);
               
               // FORCE UPDATE: Since test image works, force update the main state
-              console.log(`🔄 FORCE UPDATE: Updating capturedPhoto state since test image works`);
               setCapturedPhoto(compressedDataUrl);
               
               setTimeout(() => {
                 if (testImg.parentNode) {
                   testImg.parentNode.removeChild(testImg);
-                  console.log(`🧪 TEST: Test image removed from DOM`);
                 }
               }, 5000);
             };
@@ -1294,9 +1278,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             
             // Upload to GitLab
             const file = dataURLtoFile(compressedDataUrl, 'owner_photo.jpg');
-            console.log(`📤 Uploading to GitLab: ${file.name}, size: ${file.size} bytes`);
             uploadImageToGitLab(file, 'owner_photo', (imageId) => {
-              console.log(`✔ GitLab upload successful, imageId: ${imageId}`);
               setOwnerPhotoImageId(imageId);
               setPhotoCapturing(false);
               toast.success('Owner/Tenant Photo Captured Successfully!');
@@ -1305,7 +1287,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           
           // Start with initial delay, then begin content detection
           setTimeout(() => {
-            console.log(`⏳ Initial delay complete, starting content detection...`);
             toast.info('Camera ready! Detecting content...');
             
             if (!tryDrawVideo()) {
@@ -1476,28 +1457,22 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const ctx = canvas.getContext('2d');
         
         if (ctx) {
-          console.log(`📸 Drawing video to sketch canvas: ${canvas.width}x${canvas.height}`);
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          console.log(`✅ Video drawn to sketch canvas successfully`);
           
           // Apply smart compression with fallback
           let compressedDataUrl;
           try {
             compressedDataUrl = smartCompressImage(canvas, 'sketch');
-            console.log(`🖼️ Setting sketchPhoto for display: ${compressedDataUrl ? 'success' : 'failed'}`);
           } catch (error) {
             console.warn('⚠️ Smart compression failed, using fallback:', error);
             // Fallback to simple compression with maximum quality
             compressedDataUrl = canvas.toDataURL('image/jpeg', 0.98);
-            console.log(`🔄 Fallback compression: ${compressedDataUrl ? 'success' : 'failed'}`);
           }
           setSketchPhoto(compressedDataUrl); // Keep for display
           
           // Upload to GitLab
           const file = dataURLtoFile(compressedDataUrl, 'sketch_photo.jpg');
-          console.log(`📤 Uploading sketch to GitLab: ${file.name}, size: ${file.size} bytes`);
           uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
-            console.log(`✅ Sketch GitLab upload successful, imageId: ${imageId}`);
             setSketchPhotoImageId(imageId);
             toast.success('Sketch photo captured and uploaded successfully!');
           });
@@ -1529,7 +1504,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setTimeout(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-        console.log('✍️ Signature: Setting up canvas...');
         
         // Set canvas dimensions with high DPI support
         const dpr = window.devicePixelRatio || 1;
@@ -1554,10 +1528,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           ctx.lineJoin = 'round'; // Rounded line joins
           ctx.globalCompositeOperation = 'source-over'; // Ensure proper blending
           
-          console.log('✍️ Signature: Canvas setup complete with high DPI support');
-          console.log(`   Canvas dimensions: ${canvas.width}x${canvas.height}`);
-          console.log(`   Display dimensions: 400x200`);
-          console.log(`   Device pixel ratio: ${dpr}`);
         }
       }
     }, 100);
@@ -1581,7 +1551,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    console.log('✍️ Signature: Starting to draw...');
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (canvas) {
@@ -1597,7 +1566,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        console.log('✍️ Signature: Starting at position:', x, y);
         
         ctx.beginPath();
         ctx.moveTo(x, y);
@@ -1622,7 +1590,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const stopDrawing = () => {
-    console.log('✍️ Signature: Stopping drawing...');
     setIsDrawing(false);
     const canvas = canvasRef.current;
     if (canvas) {
@@ -1638,7 +1605,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        console.log(`✍️ Starting signature content detection...`);
         
         // ADVANCED CONTENT DETECTION: Check for meaningful drawing content
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -1674,34 +1640,25 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const brightnessRange = maxBrightness - minBrightness;
         const hasContent = avgBrightness < 250 && brightnessRange > 20 && drawingPixels > 50;
         
-        console.log(`✍️ Signature content analysis:`);
         console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
         console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
-        console.log(`   Non-zero pixels: ${nonZeroPixels}`);
-        console.log(`   Drawing pixels: ${drawingPixels}`);
-        console.log(`   Has content: ${hasContent ? 'YES' : 'NO'}`);
         
         if (!hasContent) {
-          console.log(`❌ No meaningful signature content detected`);
           toast.error('Please draw a signature before saving. Make sure your signature is visible and clear.');
           return;
         }
         
-        console.log(`✅ Signature content detected! Proceeding with compression...`);
         
         // Apply smart compression with enhanced fallback
-        console.log(`✍️ Starting signature compression`);
         let compressedSignature;
         try {
           compressedSignature = smartCompressImage(canvas, 'signature');
-          console.log(`🖼️ Smart compression result: ${compressedSignature ? 'success' : 'failed'}`);
           
           // Validate compressed signature
           if (!compressedSignature || compressedSignature.length < 100) {
             throw new Error('Smart compression produced invalid result');
           }
           
-          console.log(`✅ Smart compression successful, data length: ${compressedSignature.length}`);
         } catch (error) {
           console.warn('⚠️ Smart compression failed, using enhanced fallback:', error);
           
@@ -1709,7 +1666,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           try {
             // Try PNG first (better for signatures with sharp edges)
             compressedSignature = canvas.toDataURL('image/png', 1.0);
-            console.log(`🔄 PNG fallback: ${compressedSignature ? 'success' : 'failed'}`);
             
             if (!compressedSignature || compressedSignature.length < 100) {
               throw new Error('PNG fallback failed');
@@ -1718,7 +1674,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             console.warn('⚠️ PNG fallback failed, trying JPEG:', pngError);
             // Final fallback: JPEG with high quality
             compressedSignature = canvas.toDataURL('image/jpeg', 0.98);
-            console.log(`🔄 JPEG fallback: ${compressedSignature ? 'success' : 'failed'}`);
           }
         }
         
@@ -1729,18 +1684,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           return;
         }
         
-        console.log(`✅ Signature compression complete, setting display data...`);
         setSignatureData(compressedSignature); // Keep for display
         
         // Upload to GitLab
         const file = dataURLtoFile(compressedSignature, 'signature.jpg');
-        console.log(`📤 Uploading signature to GitLab: ${file.name}, size: ${file.size} bytes`);
         uploadImageToGitLab(file, 'signature', (imageId) => {
-          console.log(`✅ Signature GitLab upload successful, imageId: ${imageId}`);
           setSignatureImageId(imageId);
           setSignatureOpen(false);
           toast.success('Signature saved and uploaded successfully!');
-          console.log('✍️ Signature: Uploaded to GitLab successfully');
         });
       }
     }
@@ -1749,7 +1700,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // Touch events for mobile - Enhanced Implementation
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    console.log('✍️ Signature: Touch start');
     
     const touch = e.touches[0];
     const canvas = canvasRef.current;
@@ -1793,7 +1743,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    console.log('✍️ Signature: Touch end');
     setIsDrawing(false);
     
     const canvas = canvasRef.current;
@@ -1906,6 +1855,65 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
+  // Auto-save function
+  const autoSaveDraft = async () => {
+    if (!autoSaveEnabled || isUserTyping) return;
+    
+    try {
+      // Debug: Log what we're trying to save
+      console.log('🔄 Auto-save attempt:', {
+        owner_name: formData.owner_name,
+        locality: formData.locality,
+        survey_status: 'draft'
+      });
+      const apiData = {
+        ...formData,
+        ward_number: formData.ward_number ? parseInt(formData.ward_number) : null,
+        construction_year: formData.construction_year ? parseInt(formData.construction_year) : null,
+        plot_area: formData.plot_area ? parseFloat(formData.plot_area) : null,
+        built_up_area: formData.built_up_area ? parseFloat(formData.built_up_area) : null,
+        carpet_area: formData.carpet_area ? parseFloat(formData.carpet_area) : null,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+        longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+        water_connection: formData.water_connection ? parseInt(formData.water_connection.toString()) : null,
+        electricity_connection: formData.electricity_connection,
+        sewage_connection: formData.sewage_connection,
+        solar_panel: formData.solar_panel,
+        rain_water_harvesting: formData.rain_water_harvesting,
+        building_permission: formData.building_permission,
+        owner_photo_image_id: ownerPhotoImageId,
+        signature_image_id: signatureImageId,
+        sketch_photo_image_id: sketchPhotoImageId,
+        survey_status: 'draft'
+      };
+
+      // Remove empty strings but keep null values for draft saves
+      Object.keys(apiData).forEach(key => {
+        if ((apiData as any)[key] === '') {
+          (apiData as any)[key] = null; // Convert empty strings to null for draft
+        }
+      });
+
+      if (isEditMode && editingProperty?.property_id) {
+        // In edit mode, update the existing property
+        await propertiesApi.updateProperty(editingProperty.property_id, apiData as any);
+      } else {
+        // In create mode, create a new property
+        await propertiesApi.createProperty(apiData as any);
+      }
+      setLastAutoSave(new Date());
+      
+      // Show subtle notification
+      toast.success('💾 Form auto-saved', {
+        position: 'bottom-right'
+      });
+    } catch (error) {
+      // Debug: Log auto-save errors
+      console.error('❌ Auto-save failed:', error);
+      // Don't show error toast for auto-save failures to avoid annoying users
+    }
+  };
+
   // Form submission functions
   const saveDraft = async () => {
     setLoading(true);
@@ -1982,12 +1990,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       // Add debugging
       console.log('📤 Sending API data:', JSON.stringify(apiData, null, 2));
-      console.log('📤 Key fields validation:');
-      console.log('- ward_number:', apiData.ward_number, typeof apiData.ward_number);
-      console.log('- pincode:', apiData.pincode, typeof apiData.pincode);
-      console.log('- plot_area:', apiData.plot_area, typeof apiData.plot_area);
-      console.log('- built_up_area:', apiData.built_up_area, typeof apiData.built_up_area);
-      console.log('- carpet_area:', apiData.carpet_area, typeof apiData.carpet_area);
 
       let response;
       
@@ -1999,8 +2001,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         // No separate API call needed - sketch_photo is included in apiData
         
         try {
-          const submitResponse = await propertiesApi.submitProperty(editingProperty.id);
-          console.log('✅ Property submitted successfully:', submitResponse);
+          await propertiesApi.submitProperty(editingProperty.id);
           toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
         } catch (submitError: any) {
           console.error('❌ Error submitting property:', submitError);
@@ -2236,11 +2237,20 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 onChange={(e) => handleInputChange('property_id', e.target.value.toUpperCase())}
                 placeholder="e.g., PROP-2024-001"
                 required
-                helperText="Unique identifier for this property"
+                helperText={isEditMode ? "Property ID cannot be changed in edit mode" : "Unique identifier for this property"}
                 inputProps={{ 
                   maxLength: 100,
                   pattern: '[A-Z0-9_-]+'
                 }}
+                InputProps={{
+                  readOnly: isEditMode
+                }}
+                sx={isEditMode ? { 
+                  '& .MuiInputBase-input': { 
+                    backgroundColor: '#f5f5f5',
+                    color: '#666'
+                  } 
+                } : {}}
               />
             </Grid>
             
@@ -2252,6 +2262,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 onChange={(e) => handleInputChange('survey_number', e.target.value)}
                 placeholder="e.g., SUR-2024-001"
                 required
+                helperText={isEditMode ? "Survey Number cannot be changed in edit mode" : "Unique survey identifier"}
+                InputProps={{
+                  readOnly: isEditMode
+                }}
+                sx={isEditMode ? { 
+                  '& .MuiInputBase-input': { 
+                    backgroundColor: '#f5f5f5',
+                    color: '#666'
+                  } 
+                } : {}}
               />
             </Grid>
             
@@ -2978,13 +2998,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Grid>
                   
                   {capturedPhoto && (() => {
-                    console.log(`🖼️ Rendering owner photo: ${capturedPhoto ? 'data available' : 'no data'}`);
-                    console.log(`📊 Owner photo data length: ${capturedPhoto ? capturedPhoto.length : 0}`);
                     return (
                       <Grid item xs={12} sm={6}>
                         <Box sx={{ textAlign: 'center' }}>
                           <img 
-                            src={capturedPhoto} 
+                            src={getImageUrl(ownerPhotoImageId, capturedPhoto)} 
                             alt="Captured" 
                             style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
                             onLoad={() => console.log('✅ Owner photo image loaded successfully')}
@@ -3039,11 +3057,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                 </Button>
                 
                 {signatureData && (() => {
-                  console.log(`🖼️ Rendering signature image: ${signatureData ? 'data available' : 'no data'}`);
                   return (
                     <Box sx={{ textAlign: 'center' }}>
                       <img 
-                        src={signatureData} 
+                        src={getImageUrl(signatureImageId, signatureData)} 
                         alt="Signature" 
                         style={{ border: '1px solid #ccc', maxWidth: '300px' }}
                         onLoad={() => console.log('✅ Signature image loaded successfully')}
@@ -3116,12 +3133,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   </Grid>
                   
                                     {(sketchPhoto || sketchPhotoBase64) && (() => {
-                  console.log(`🖼️ Rendering sketch image: sketchPhoto=${sketchPhoto ? 'available' : 'null'}, sketchPhotoBase64=${sketchPhotoBase64 ? 'available' : 'null'}`);
                   return (
                     <Grid item xs={12} sm={6}>
                       <Box sx={{ textAlign: 'center' }}>
                             <img 
-                              src={sketchPhoto || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
+                              src={getImageUrl(sketchPhotoImageId, sketchPhoto) || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
                             alt="Sketch" 
                             style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
                             onLoad={() => console.log('✅ Sketch image loaded successfully')}
@@ -3320,7 +3336,30 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         <CardContent>
           <Typography variant="h4" gutterBottom align="center">
             {isEditMode ? '✏️ Edit Property Survey' : '🏠 New Property Survey'}
-      </Typography>
+          </Typography>
+          
+          {/* Auto-save status indicator */}
+          {autoSaveEnabled && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
+                {isUserTyping ? (
+                  <>
+                    <CircularProgress size={16} sx={{ mr: 1 }} />
+                    Typing... Auto-save paused
+                  </>
+                ) : (
+                  <>
+                    💾 Auto-save enabled
+                    {lastAutoSave && (
+                      <span style={{ marginLeft: '8px' }}>
+                        • Last saved: {lastAutoSave.toLocaleTimeString()}
+                      </span>
+                    )}
+                  </>
+                )}
+              </Typography>
+            </Box>
+          )}
       
       {isEditMode && editingProperty && (
         <Alert severity="info" sx={{ mb: 3 }}>

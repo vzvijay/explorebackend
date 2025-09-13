@@ -29,6 +29,11 @@ import {
 import { Property } from '../types';
 import api from '../services/api';
 
+// Helper function to get image URL through backend proxy
+const getImageUrl = (imageId: string) => {
+  return `${api.defaults.baseURL}/images/${imageId}`;
+};
+
 const PropertyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -45,6 +50,29 @@ const PropertyDetailPage: React.FC = () => {
     }
   }, [id]);
 
+  // Refresh data when component becomes visible (e.g., navigating back from edit)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && id) {
+        loadPropertyDetails();
+      }
+    };
+
+    const handleFocus = () => {
+      if (id) {
+        loadPropertyDetails();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [id]);
+
   const loadPropertyDetails = async () => {
     try {
       setLoading(true);
@@ -58,7 +86,6 @@ const PropertyDetailPage: React.FC = () => {
         setError(response.data.message || 'Failed to load property details');
       }
     } catch (error) {
-      console.error('Error loading property details:', error);
       setError('Failed to load property details. Please try again.');
     } finally {
       setLoading(false);
@@ -67,6 +94,10 @@ const PropertyDetailPage: React.FC = () => {
 
   const handleEdit = () => {
     navigate(`/properties/${id}/edit`);
+  };
+
+  const handleRefresh = () => {
+    loadPropertyDetails();
   };
 
   const handlePhotoView = (photoPath: string) => {
@@ -405,9 +436,13 @@ const PropertyDetailPage: React.FC = () => {
               </Typography>
               
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                {property.images?.find(img => img.image_type === 'sketch_photo') ? (
+                {(() => {
+                  // Get the latest sketch photo (first in DESC ordered array)
+                  const latestSketchPhoto = property.images?.find(img => img.image_type === 'sketch_photo');
+                  return latestSketchPhoto;
+                })() ? (
                   <img
-                    src={property.images.find(img => img.image_type === 'sketch_photo')?.gitlab_url}
+                    src={getImageUrl(property.images?.find(img => img.image_type === 'sketch_photo')?.id!)}
                     alt={`Sketch photo for survey ${property.survey_number}`}
                     style={{
                       width: '200px',
@@ -417,12 +452,10 @@ const PropertyDetailPage: React.FC = () => {
                       cursor: 'pointer',
                       border: '2px solid #e0e0e0'
                     }}
-                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'sketch_photo')?.gitlab_url!)}
-                    onError={(e) => {
-                      console.error('❌ Error loading sketch photo:', e);
+                    onClick={() => handlePhotoView(getImageUrl(property.images?.find(img => img.image_type === 'sketch_photo')?.id!))}
+                    onError={() => {
                     }}
                     onLoad={() => {
-                      console.log('✅ Sketch photo loaded successfully from GitLab');
                     }}
                   />
                 ) : (
@@ -466,7 +499,7 @@ const PropertyDetailPage: React.FC = () => {
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                   <img
-                    src={property.images?.find(img => img.image_type === 'owner_photo')?.gitlab_url}
+                    src={getImageUrl(property.images?.find(img => img.image_type === 'owner_photo')?.id!)}
                     alt="Owner/Tenant Photo"
                     style={{
                       width: '100%',
@@ -475,7 +508,7 @@ const PropertyDetailPage: React.FC = () => {
                       borderRadius: '8px',
                       cursor: 'pointer'
                     }}
-                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'owner_photo')?.gitlab_url!)}
+                    onClick={() => handlePhotoView(getImageUrl(property.images?.find(img => img.image_type === 'owner_photo')?.id!))}
                   />
                 </Box>
               </CardContent>
@@ -493,7 +526,7 @@ const PropertyDetailPage: React.FC = () => {
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                   <img
-                    src={property.images?.find(img => img.image_type === 'signature')?.gitlab_url}
+                    src={getImageUrl(property.images?.find(img => img.image_type === 'signature')?.id!)}
                     alt="Owner Signature"
                     style={{
                       width: '100%',
@@ -503,12 +536,10 @@ const PropertyDetailPage: React.FC = () => {
                       cursor: 'pointer',
                       border: '2px solid #e0e0e0'
                     }}
-                    onClick={() => handlePhotoView(property.images?.find(img => img.image_type === 'signature')?.gitlab_url!)}
-                    onError={(e) => {
-                      console.error('❌ Error loading signature:', e);
+                    onClick={() => handlePhotoView(getImageUrl(property.images?.find(img => img.image_type === 'signature')?.id!))}
+                    onError={() => {
                     }}
                     onLoad={() => {
-                      console.log('✅ Signature loaded successfully from GitLab');
                     }}
                   />
                 </Box>
@@ -532,6 +563,14 @@ const PropertyDetailPage: React.FC = () => {
                 >
                   Edit Property
                 </Button>
+                <Button
+                  variant="outlined"
+                  onClick={handleRefresh}
+                  fullWidth
+                  disabled={loading}
+                >
+                  {loading ? 'Refreshing...' : '🔄 Refresh Data'}
+                </Button>
                 
                 <Button
                   variant="outlined"
@@ -550,23 +589,39 @@ const PropertyDetailPage: React.FC = () => {
       {/* Photo View Dialog */}
       <Dialog
         open={photoDialog}
-        onClose={() => setPhotoDialog(false)}
+        onClose={() => {
+          setPhotoDialog(false);
+        }}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle>Photo View</DialogTitle>
         <DialogContent>
           {selectedPhoto && (
-            <img
-              src={selectedPhoto}
-              alt="Property Photo"
-              style={{
-                width: '100%',
-                height: 'auto',
-                maxHeight: '70vh',
-                objectFit: 'contain'
-              }}
-            />
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Image URL: {selectedPhoto}
+              </Typography>
+              <img
+                src={selectedPhoto}
+                alt="Property Photo"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  maxHeight: '70vh',
+                  objectFit: 'contain',
+                  display: 'block',
+                  backgroundColor: 'white',
+                  border: '1px solid #ccc'
+                }}
+                onLoad={() => {
+                  // Image loaded successfully
+                }}
+                onError={() => {
+                  // Image failed to load
+                }}
+              />
+            </>
           )}
         </DialogContent>
         <DialogActions>
