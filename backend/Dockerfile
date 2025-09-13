@@ -14,7 +14,7 @@ RUN npm ci --only=production
 COPY src/ ./src/
 
 # Copy environment file (production or local)
-COPY env.production .env
+COPY env.production.template .env
 # For local testing, you can override with: COPY env.local .env
 
 # Create uploads directory
