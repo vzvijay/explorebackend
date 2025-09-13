@@ -7,7 +7,7 @@ const getEnvironmentConfig = () => {
   
   // Database configuration
   const databaseUrl = process.env.DATABASE_URL;
-  const isLocalDatabase = databaseUrl && (databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1'));
+  const isLocalDatabase = !databaseUrl || (databaseUrl && (databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')));
   
   // API configuration
   const apiBaseUrl = process.env.API_BASE_URL || (
@@ -73,7 +73,19 @@ const getEnvironmentConfig = () => {
     
     // Validation
     validate: () => {
-      const required = ['DATABASE_URL', 'JWT_SECRET', 'GITLAB_TOKEN', 'GITLAB_PROJECT_ID'];
+      const required = ['JWT_SECRET', 'GITLAB_TOKEN', 'GITLAB_PROJECT_ID'];
+      
+      // Only require DATABASE_URL in production
+      if (isProduction && !databaseUrl) {
+        required.push('DATABASE_URL');
+      }
+      
+      // For local development, require individual DB variables if DATABASE_URL is not provided
+      if (isDevelopment && !databaseUrl) {
+        const dbRequired = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+        required.push(...dbRequired);
+      }
+      
       const missing = required.filter(key => !process.env[key]);
       
       if (missing.length > 0) {

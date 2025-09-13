@@ -229,8 +229,6 @@ const getPropertyById = async (req, res) => {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     
     const whereClause = isUUID ? { id: id } : { property_id: id };
-    
-    console.log('getPropertyById - id:', id, 'isUUID:', isUUID, 'whereClause:', whereClause);
 
     const property = await Property.findOne({ 
       where: whereClause,

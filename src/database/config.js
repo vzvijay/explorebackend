@@ -41,11 +41,11 @@ if (config.databaseUrl && config.databaseUrl.trim() !== '') {
   // Using fallback database configuration
   // Fallback to individual environment variables (development/local)
   sequelize = new Sequelize({
-    host: process.env.DB_HOST || (() => { throw new Error('DB_HOST environment variable is required'); })(),
+    host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
     database: process.env.DB_NAME || 'maharashtra_survey_db',
-    username: process.env.DB_USER || (() => { throw new Error('DB_USER environment variable is required'); })(),
-    password: process.env.DB_PASSWORD || (() => { throw new Error('DB_PASSWORD environment variable is required'); })(),
+    username: process.env.DB_USER || 'survey_user',
+    password: process.env.DB_PASSWORD || 'password',
     dialect: 'postgres',
     logging: config.logging.enableConsole ? console.log : false,
     pool: {
