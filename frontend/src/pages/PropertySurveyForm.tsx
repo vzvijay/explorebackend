@@ -159,6 +159,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [photoCapturing, setPhotoCapturing] = useState(false);
   const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
   const [signatureData, setSignatureData] = useState<string>('');
+  const [signatureMode, setSignatureMode] = useState<'draw' | 'photo'>('draw');
+  const [signaturePhoto, setSignaturePhoto] = useState<string | null>(null);
+  const [signaturePhotoCapturing, setSignaturePhotoCapturing] = useState(false);
   
   // New GitLab image storage state
   const [ownerPhotoImageId, setOwnerPhotoImageId] = useState<string | null>(null);
@@ -433,6 +436,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (!formData.plot_area.trim()) errors.push('Plot Area');
     if (!formData.built_up_area.trim()) errors.push('Built-up Area');
     if (!formData.carpet_area.trim()) errors.push('Carpet Area');
+    
+    // Validate Signature - either drawing OR photo must be provided
+    if (!signatureData && !signaturePhoto && !signatureImageId) {
+      errors.push('Signature (draw signature or upload photo)');
+    }
     
     // Validate Property ID format
     if (formData.property_id && !/^[A-Z0-9_-]+$/.test(formData.property_id)) {
@@ -1644,6 +1652,225 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data like owner_tenant_photo
   // No separate API call needed - sketch_photo is included in apiData
 
+  // Signature photo functions - Reuse existing photo capture logic
+  const captureSignaturePhoto = async () => {
+    try {
+      setSignaturePhotoCapturing(true);
+      toast.info('Opening camera for signature... Please wait.');
+      
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const cameraMode = isMobileDevice() ? 'environment' : 'user';
+        console.log(`📱 Device: ${isMobileDevice() ? 'Mobile' : 'Desktop'}, Camera: ${cameraMode}`);
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: cameraMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          } 
+        });
+        
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        video.play();
+        
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(true);
+        });
+        
+        // Wait for video to stabilize
+        toast.info('Waiting for camera to stabilize...');
+        
+        let attempts = 0;
+        const maxAttempts = 30; // 3 seconds max wait
+        
+        while (attempts < maxAttempts) {
+          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+              const hasContent = testImageData.data.some(pixel => pixel !== 0);
+              
+              if (hasContent) {
+                break;
+              }
+            }
+          }
+          
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        if (attempts >= maxAttempts) {
+          console.error('❌ Video stream never produced content after 3 seconds');
+          toast.error('Camera is not producing content. Please check camera permissions and try again.');
+          setSignaturePhotoCapturing(false);
+          // Stop camera stream to close camera
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        
+        toast.info('Camera ready! Position your signature in frame and click capture.');
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Wait for video to have content before drawing
+          let drawAttempts = 0;
+          const maxDrawAttempts = 150; // 15 seconds max
+          
+          toast.info('Initializing camera... Please wait');
+          
+          while (drawAttempts < maxDrawAttempts) {
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+              
+              // Check for meaningful brightness variation
+              const pixels = testImageData.data;
+              let totalBrightness = 0;
+              let maxBrightness = 0;
+              let minBrightness = 255;
+              let nonZeroPixels = 0;
+              
+              for (let i = 0; i < pixels.length; i += 16) {
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const brightness = (r + g + b) / 3;
+                
+                totalBrightness += brightness;
+                maxBrightness = Math.max(maxBrightness, brightness);
+                minBrightness = Math.min(minBrightness, brightness);
+                
+                if (brightness > 10) {
+                  nonZeroPixels++;
+                }
+              }
+              
+              const avgBrightness = totalBrightness / (pixels.length / 16);
+              const brightnessRange = maxBrightness - minBrightness;
+              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
+              
+              if (hasContent) {
+                console.log(`✅ Video has content after ${drawAttempts} attempts`);
+                break;
+              }
+            }
+            
+            drawAttempts++;
+            if (drawAttempts % 50 === 0) {
+              const remaining = Math.ceil((maxDrawAttempts - drawAttempts) / 50);
+              toast.info(`Camera initializing... ${remaining} seconds remaining`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          if (drawAttempts >= maxDrawAttempts) {
+            console.error('❌ Video stream never produced content after 15 seconds');
+            toast.error('Camera is not producing content. Please check camera permissions and try again.');
+            setSignaturePhotoCapturing(false);
+            // Stop camera stream to close camera
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+          
+          // Draw the actual image
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Validate canvas has content
+          const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const hasContent = testImageData.data.some(pixel => pixel !== 0);
+          
+          if (!hasContent) {
+            console.error('❌ Canvas is empty after drawing video!');
+            toast.error('Camera is producing black frames. Please check camera and try again.');
+            setSignaturePhotoCapturing(false);
+            // Stop camera stream to close camera
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+          
+          console.log('✅ Canvas has content after drawing video');
+          
+          // Use JPEG with high quality for signatures
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+          console.log(`🧪 Signature DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
+          
+          setSignaturePhoto(compressedDataUrl);
+          
+          // Upload to GitLab
+          const file = dataURLtoFile(compressedDataUrl, 'signature_photo.jpg');
+          uploadImageToGitLab(file, 'signature', (imageId) => {
+            setSignatureImageId(imageId);
+            toast.success('Signature photo captured and uploaded successfully!');
+          });
+          
+          // Stop camera stream to close camera
+          stream.getTracks().forEach(track => track.stop());
+        }
+      } else {
+        toast.error('Camera not supported on this device.');
+      }
+    } catch (error) {
+      console.error('Signature camera error:', error);
+      toast.error('Failed to open camera for signature capture.');
+    } finally {
+      setSignaturePhotoCapturing(false);
+    }
+  };
+
+  const uploadSignatureFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error('File too large. Please select an image under 5MB.');
+          return;
+        }
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          toast.error('Please select a valid image file.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result as string;
+          setSignaturePhoto(result);
+          
+          // Upload to GitLab
+          uploadImageToGitLab(file, 'signature', (imageId) => {
+            setSignatureImageId(imageId);
+            toast.success('Signature photo uploaded successfully!');
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    
+    input.click();
+  };
 
   // Signature functions - Enhanced Implementation
   const openSignatureDialog = () => {
@@ -3845,42 +4072,154 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         </DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: 'center', p: 3 }}>
-            <Typography variant="body2" gutterBottom>
-              Draw your signature below:
-            </Typography>
-            
-            <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mb: 2 }}>
-            <canvas
-              ref={canvasRef}
-              width={400}
-              height={200}
-                style={{ border: '1px solid #ddd', cursor: 'crosshair' }}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            />
-            </Box>
-            
+            {/* Mode Toggle */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" gutterBottom>
+                Choose how you want to provide your signature:
+              </Typography>
               <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                 <Button
-                  variant="outlined"
-                onClick={clearSignatureFromForm}
-                startIcon={<Clear />}
+                  variant={signatureMode === 'draw' ? 'contained' : 'outlined'}
+                  onClick={() => setSignatureMode('draw')}
+                  startIcon={<Edit />}
                 >
-                Clear
+                  Draw Signature
                 </Button>
                 <Button
-                variant="contained"
-                onClick={saveSignature}
-                startIcon={<Save />}
-              >
-                Save Signature
+                  variant={signatureMode === 'photo' ? 'contained' : 'outlined'}
+                  onClick={() => setSignatureMode('photo')}
+                  startIcon={<PhotoCamera />}
+                >
+                  Upload Photo
                 </Button>
               </Box>
+            </Box>
+
+            {/* Drawing Mode */}
+            {signatureMode === 'draw' && (
+              <>
+                <Typography variant="body2" gutterBottom>
+                  Draw your signature below:
+                </Typography>
+                
+                <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mb: 2 }}>
+                  <canvas
+                    ref={canvasRef}
+                    width={400}
+                    height={200}
+                    style={{ border: '1px solid #ddd', cursor: 'crosshair' }}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                  />
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    onClick={clearSignatureFromForm}
+                    startIcon={<Clear />}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={saveSignature}
+                    startIcon={<Save />}
+                  >
+                    Save Signature
+                  </Button>
+                </Box>
+              </>
+            )}
+
+            {/* Photo Mode */}
+            {signatureMode === 'photo' && (
+              <>
+                <Typography variant="body2" gutterBottom>
+                  Upload a photo of your signature:
+                </Typography>
+                
+                <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mb: 2, minHeight: '200px' }}>
+                  {signaturePhoto ? (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <img
+                        src={signaturePhoto}
+                        alt="Signature Preview"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '200px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px'
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                        Signature Preview
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      height: '200px',
+                      color: '#666'
+                    }}>
+                      <Typography variant="body2" gutterBottom>
+                        No signature photo selected
+                      </Typography>
+                      <Typography variant="caption">
+                        Use the buttons below to capture or upload a photo
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    onClick={captureSignaturePhoto}
+                    startIcon={<PhotoCamera />}
+                    disabled={signaturePhotoCapturing}
+                  >
+                    {signaturePhotoCapturing ? 'Capturing...' : 'Capture Photo'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={uploadSignatureFile}
+                    startIcon={<Add />}
+                  >
+                    Upload File
+                  </Button>
+                  {signaturePhoto && (
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        setSignaturePhoto(null);
+                        setSignatureImageId(null);
+                        toast.info('Signature photo cleared');
+                      }}
+                      startIcon={<Clear />}
+                    >
+                      Clear Photo
+                    </Button>
+                  )}
+                </Box>
+              </>
+            )}
+
+            {signaturePhotoCapturing && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  Opening camera... Please wait and grant camera permissions when prompted.
+                </Typography>
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
