@@ -1535,7 +1535,36 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
             if (testCtx) {
               testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
               const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              const hasContent = testImageData.data.some(pixel => pixel !== 0);
+              
+              // ADVANCED CONTENT DETECTION: Check for meaningful brightness variation (same as owner photo)
+              const pixels = testImageData.data;
+              let totalBrightness = 0;
+              let maxBrightness = 0;
+              let minBrightness = 255;
+              let nonZeroPixels = 0;
+              
+              // Sample every 4th pixel for performance (RGBA = 4 values per pixel)
+              for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const brightness = (r + g + b) / 3;
+                
+                totalBrightness += brightness;
+                maxBrightness = Math.max(maxBrightness, brightness);
+                minBrightness = Math.min(minBrightness, brightness);
+                
+                if (brightness > 10) { // Not just black/dark
+                  nonZeroPixels++;
+                }
+              }
+              
+              const avgBrightness = totalBrightness / (pixels.length / 16);
+              const brightnessRange = maxBrightness - minBrightness;
+              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
+              
+              console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
+              console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
               
               if (hasContent) {
                 console.log(`✅ Video has content after ${drawAttempts} attempts`);
@@ -1561,8 +1590,24 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           // Now draw the actual image
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
+          // CRITICAL: Validate canvas has content after drawing (same as owner photo)
+          const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const hasContent = testImageData.data.some(pixel => pixel !== 0);
+          
+          if (!hasContent) {
+            console.error('❌ Canvas is empty after drawing video!');
+            console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
+            toast.error('Camera is producing black frames. Please check camera and try again.');
+            setSketchPhotoCapturing(false);
+            return;
+          }
+          
+          console.log('✅ Canvas has content after drawing video');
+          
           // Use simple compression like owner photos (smartCompressImage corrupts sketch photos)
           const compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
+          console.log(`🧪 DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
+          
           setSketchPhoto(compressedDataUrl); // Keep for display
           
           // Upload to GitLab
