@@ -1967,7 +1967,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         console.log('✅ Property creation successful');
       }
       setLastAutoSave(new Date());
-      setLastSavedData(apiData); // Store the saved data for comparison
+      setLastSavedData(JSON.parse(JSON.stringify(apiData))); // Deep copy to avoid reference issues
       console.log('✅ Auto-save completed successfully, lastSavedData updated');
       
       // Show subtle notification
@@ -3215,8 +3215,18 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                               key={sketchPhotoImageId || 'sketch-fallback'}
                               src={getImageUrl(sketchPhotoImageId, sketchPhoto) || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
                             alt="Sketch" 
-                            style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
-                            onLoad={() => console.log('✅ Sketch image loaded successfully')}
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '200px', 
+                              border: '1px solid #ccc',
+                              backgroundColor: '#f0f0f0', // Add background to see if image is transparent
+                              display: 'block' // Ensure image is displayed
+                            }}
+                            onLoad={(e) => {
+                              console.log('✅ Sketch image loaded successfully');
+                              console.log('🖼️ Image dimensions:', e.currentTarget.naturalWidth, 'x', e.currentTarget.naturalHeight);
+                              console.log('🖼️ Image src:', e.currentTarget.src);
+                            }}
                             onError={(e) => console.error('❌ Sketch image failed to load:', e)}
                           />
                             <Typography variant="caption" display="block">
