@@ -2200,6 +2200,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       // Add debugging
       console.log('📤 Sending API data:', JSON.stringify(apiData, null, 2));
+      console.log('🔍 Form mode check:', { isEditMode, editingProperty: !!editingProperty, propertyId: editingProperty?.property_id });
 
       let response;
       
@@ -2245,6 +2246,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           onEditComplete();
         }
       } else {
+        console.log('⚠️ Creating new property (not in edit mode)');
         response = await propertiesApi.createProperty(apiData);
         
         // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
