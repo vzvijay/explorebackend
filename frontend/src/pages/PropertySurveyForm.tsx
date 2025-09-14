@@ -1493,15 +1493,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // Apply smart compression with fallback
-          let compressedDataUrl;
-          try {
-            compressedDataUrl = smartCompressImage(canvas, 'sketch');
-          } catch (error) {
-            console.warn('⚠️ Smart compression failed, using fallback:', error);
-            // Fallback to simple compression with maximum quality
-            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.98);
-          }
+          // Use simple compression like owner photos (smartCompressImage corrupts sketch photos)
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
           setSketchPhoto(compressedDataUrl); // Keep for display
           
           // Upload to GitLab
