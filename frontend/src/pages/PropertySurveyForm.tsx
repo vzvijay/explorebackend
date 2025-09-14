@@ -350,24 +350,24 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         // Set signature data if available
         const signatureImage = editingProperty.images.find((img: any) => img.image_type === 'signature');
         if (signatureImage) {
-          setSignatureData(signatureImage.gitlab_url);
           setSignatureImageId(signatureImage.id);
+          setSignatureData(signatureImage.gitlab_url);
           // Signature data set from editing property images
         }
 
         // Set owner photo if available
         const ownerImage = editingProperty.images.find((img: any) => img.image_type === 'owner_photo');
         if (ownerImage) {
-          setCapturedPhoto(ownerImage.gitlab_url);
           setOwnerPhotoImageId(ownerImage.id);
+          setCapturedPhoto(ownerImage.gitlab_url);
           // Owner photo set from editing property images
         }
 
         // Set sketch photo if available
         const sketchImage = editingProperty.images.find((img: any) => img.image_type === 'sketch_photo');
         if (sketchImage) {
-          setSketchPhoto(sketchImage.gitlab_url);
           setSketchPhotoImageId(sketchImage.id);
+          setSketchPhoto(sketchImage.gitlab_url);
           // Sketch photo set from editing property images
         }
       }
@@ -382,7 +382,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
     const interval = setInterval(() => {
       autoSaveDraft();
-    }, 5000); // Auto-save every 5 seconds
+    }, 10000); // Auto-save every 10 seconds
 
     return () => clearInterval(interval);
   }, [formData, autoSaveEnabled, isEditMode, isUserTyping, ownerPhotoImageId, signatureImageId, sketchPhotoImageId]);
