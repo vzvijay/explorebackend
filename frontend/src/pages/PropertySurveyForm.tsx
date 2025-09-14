@@ -382,7 +382,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
     const interval = setInterval(() => {
       autoSaveDraft();
-    }, 10000); // Auto-save every 10 seconds
+    }, 10000); // Auto-save every 10 seconds - Updated timing fix
 
     return () => clearInterval(interval);
   }, [formData, autoSaveEnabled, isEditMode, isUserTyping, ownerPhotoImageId, signatureImageId, sketchPhotoImageId]);
