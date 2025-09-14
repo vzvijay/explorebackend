@@ -1453,6 +1453,36 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           video.onloadedmetadata = () => resolve(true);
         });
         
+        // Wait for video to actually start playing and have content
+        toast.info('Waiting for camera to stabilize...');
+        
+        let attempts = 0;
+        const maxAttempts = 30; // 3 seconds max wait
+        
+        while (attempts < maxAttempts) {
+          // Check if video is playing and has content
+          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+            // Test if video has actual content (not just black frames)
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+              const hasContent = testImageData.data.some(pixel => pixel !== 0);
+              
+              if (hasContent) {
+                break;
+              }
+            }
+          }
+          
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
         toast.info('Camera ready! Position your sketch in frame and click capture.');
         
         const canvas = document.createElement('canvas');
