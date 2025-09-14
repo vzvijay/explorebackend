@@ -171,7 +171,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [autoSaveEnabled] = useState(true);
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
   const [isUserTyping, setIsUserTyping] = useState(false);
-  const [lastSavedData, setLastSavedData] = useState<any>(null);
+  const lastSavedDataRef = useRef<any>(null);
   
   // Form data state
   const [formData, setFormData] = useState<FormData>({
@@ -1860,7 +1860,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   // Helper function to check if data has changed
-  const hasDataChanged = (currentData: any, lastSavedData: any): boolean => {
+  const hasDataChanged = (currentData: any): boolean => {
+    const lastSavedData = lastSavedDataRef.current;
     console.log('🔍 Checking if data has changed...', {
       hasLastSavedData: !!lastSavedData,
       currentDataKeys: Object.keys(currentData).length,
@@ -1910,7 +1911,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     console.log('🔄 Auto-save triggered', {
       autoSaveEnabled,
       isUserTyping,
-      hasLastSavedData: !!lastSavedData
+      hasLastSavedData: !!lastSavedDataRef.current
     });
     
     if (!autoSaveEnabled || isUserTyping) {
@@ -1948,7 +1949,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       });
 
       // Check if data has changed before saving
-      if (!hasDataChanged(apiData, lastSavedData)) {
+      if (!hasDataChanged(apiData)) {
         console.log('⏭️ Auto-save skipped: No changes detected');
         return;
       }
@@ -1967,7 +1968,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         console.log('✅ Property creation successful');
       }
       setLastAutoSave(new Date());
-      setLastSavedData(JSON.parse(JSON.stringify(apiData))); // Deep copy to avoid reference issues
+      lastSavedDataRef.current = JSON.parse(JSON.stringify(apiData)); // Deep copy to avoid reference issues
       console.log('✅ Auto-save completed successfully, lastSavedData updated');
       
       // Show subtle notification
@@ -3213,20 +3214,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       <Box sx={{ textAlign: 'center' }}>
                             <img 
                               key={sketchPhotoImageId || 'sketch-fallback'}
-                              src={getImageUrl(sketchPhotoImageId, sketchPhoto) || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
+                              src={getImageUrl(sketchPhotoImageId, sketchPhoto)} 
                             alt="Sketch" 
-                            style={{ 
-                              maxWidth: '100%', 
-                              maxHeight: '200px', 
-                              border: '1px solid #ccc',
-                              backgroundColor: '#f0f0f0', // Add background to see if image is transparent
-                              display: 'block' // Ensure image is displayed
-                            }}
-                            onLoad={(e) => {
-                              console.log('✅ Sketch image loaded successfully');
-                              console.log('🖼️ Image dimensions:', e.currentTarget.naturalWidth, 'x', e.currentTarget.naturalHeight);
-                              console.log('🖼️ Image src:', e.currentTarget.src);
-                            }}
+                            style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
+                            onLoad={() => console.log('✅ Sketch image loaded successfully')}
                             onError={(e) => console.error('❌ Sketch image failed to load:', e)}
                           />
                             <Typography variant="caption" display="block">
