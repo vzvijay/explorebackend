@@ -147,11 +147,14 @@ const EditPropertyPage: React.FC = () => {
         onEditComplete={handleEditComplete}
       />
       {/* Debug info */}
-      {console.log('🔍 EditPropertyPage: Passing props to PropertySurveyForm:', { 
-        editMode: true, 
-        propertyToEdit: property, 
-        propertyId: property?.property_id 
-      })}
+      {(() => {
+        console.log('🔍 EditPropertyPage: Passing props to PropertySurveyForm:', { 
+          editMode: true, 
+          propertyToEdit: property, 
+          propertyId: property?.property_id 
+        });
+        return null;
+      })()}
     </Box>
   );
 };
