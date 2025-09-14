@@ -1974,14 +1974,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       toast.success('💾 Form auto-saved', {
         position: 'bottom-right'
       });
-    } catch (error) {
+    } catch (error: any) {
       // Debug: Log auto-save errors with more detail
       console.error('❌ Auto-save failed:', {
         error: error,
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data
+        message: error?.message,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data
       });
       // Don't show error toast for auto-save failures to avoid annoying users
     }
