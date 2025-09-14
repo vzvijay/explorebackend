@@ -36,14 +36,17 @@ const getPendingApprovals = async (req, res) => {
     const offset = (page - 1) * limit;
     const order = [[sort_by, sort_order.toUpperCase()]];
 
-    // Get pending approvals with user details
+    // Get pending approvals with user details (exclude soft-deleted)
     const { count, rows: properties } = await Property.findAndCountAll({
-      where: whereClause,
+      where: {
+        ...whereClause,
+        deleted_at: null // Exclude soft-deleted properties
+      },
       include: [
         {
           model: User,
           as: 'surveyor',
-          attributes: ['id', 'first_name', 'last_name', 'employee_id', 'role']
+          attributes: ['id', 'first_name', 'last_name', 'employee_id', 'role', 'email', 'phone', 'department']
         }
       ],
       order,
@@ -281,12 +284,15 @@ const getPropertyForApproval = async (req, res) => {
     const { propertyId } = req.params;
 
     const property = await Property.findOne({ 
-      where: { property_id: propertyId },
+      where: { 
+        property_id: propertyId,
+        deleted_at: null // Exclude soft-deleted properties
+      },
       include: [
         {
           model: User,
           as: 'surveyor',
-          attributes: ['id', 'first_name', 'last_name', 'employee_id', 'role', 'department']
+          attributes: ['id', 'first_name', 'last_name', 'employee_id', 'role', 'email', 'phone', 'department']
         }
       ]
     });
@@ -315,10 +321,70 @@ const getPropertyForApproval = async (req, res) => {
   }
 };
 
+// Soft delete a property (Admin only)
+const deleteProperty = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { deletion_reason } = req.body;
+    const adminUserId = req.user.id;
+
+    // Validate required fields
+    if (!deletion_reason || deletion_reason.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Deletion reason is required'
+      });
+    }
+
+    // Find the property
+    const property = await Property.findOne({ 
+      where: { 
+        property_id: propertyId,
+        deleted_at: null // Only allow deletion of non-deleted properties
+      }
+    });
+    
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: 'Property not found or already deleted'
+      });
+    }
+
+    // Soft delete the property
+    await property.update({
+      deleted_at: new Date(),
+      deleted_by: adminUserId,
+      deletion_reason: deletion_reason.trim()
+    });
+
+    res.json({
+      success: true,
+      message: 'Property deleted successfully',
+      data: {
+        property_id: property.property_id,
+        survey_number: property.survey_number,
+        deleted_by: adminUserId,
+        deleted_at: property.deleted_at,
+        deletion_reason: property.deletion_reason
+      }
+    });
+
+  } catch (error) {
+    console.error('Error deleting property:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete property',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getPendingApprovals,
   approveProperty,
   rejectProperty,
   getApprovalStats,
-  getPropertyForApproval
+  getPropertyForApproval,
+  deleteProperty
 };

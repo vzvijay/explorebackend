@@ -21,6 +21,9 @@ export interface PendingApproval {
     last_name: string;
     role: string;
     employee_id: string;
+    email: string;
+    phone: string;
+    department?: string;
   };
 }
 
@@ -74,6 +77,18 @@ export interface ApprovalResponse {
   };
 }
 
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+  data: {
+    property_id: string;
+    survey_number: string;
+    deleted_by: string;
+    deleted_at: string;
+    deletion_reason: string;
+  };
+}
+
 export interface PropertyForApproval {
   id: string;
   survey_number: string;
@@ -94,6 +109,8 @@ export interface PropertyForApproval {
     last_name: string;
     role: string;
     employee_id: string;
+    email: string;
+    phone: string;
     department?: string;
   };
   // Add other property fields as needed
@@ -166,6 +183,16 @@ class AdminApiService {
     const response = await api.post(`/admin/reject/${propertyId}`, {
       rejection_reason: rejectionReason,
       admin_notes: adminNotes
+    });
+    return response.data;
+  }
+
+  // Delete a property (soft delete)
+  async deleteProperty(propertyId: string, deletionReason: string): Promise<DeleteResponse> {
+    const response = await api.delete(`/admin/property/${propertyId}`, {
+      data: {
+        deletion_reason: deletionReason
+      }
     });
     return response.data;
   }

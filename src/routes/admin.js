@@ -6,7 +6,8 @@ const {
   approveProperty,
   rejectProperty,
   getApprovalStats,
-  getPropertyForApproval
+  getPropertyForApproval,
+  deleteProperty
 } = require('../controllers/adminController');
 
 /**
@@ -31,5 +32,8 @@ router.post('/approve/:propertyId', approveProperty);
 
 // POST /api/admin/reject/:propertyId - Reject a property survey
 router.post('/reject/:propertyId', rejectProperty);
+
+// DELETE /api/admin/property/:propertyId - Soft delete a property (Admin only)
+router.delete('/property/:propertyId', deleteProperty);
 
 module.exports = router;

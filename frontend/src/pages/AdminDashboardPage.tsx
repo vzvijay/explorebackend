@@ -39,14 +39,18 @@ import {
   FilterList as FilterListIcon,
   TrendingUp as TrendingUpIcon,
   Assignment as AssignmentIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  Delete as DeleteIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import adminApi, { 
   PendingApproval, 
   ApprovalStats, 
-  PropertyForApproval 
+  PropertyForApproval,
+  DeleteResponse
 } from '../services/adminApi';
 import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 
@@ -80,6 +84,7 @@ const AdminDashboardPage: React.FC = () => {
   // Dialog states
   const [approvalDialog, setApprovalDialog] = useState(false);
   const [rejectionDialog, setRejectionDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
   const [propertyDetailsDialog, setPropertyDetailsDialog] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<PendingApproval | null>(null);
   const [propertyDetails, setPropertyDetails] = useState<PropertyForApproval | null>(null);
@@ -88,6 +93,7 @@ const AdminDashboardPage: React.FC = () => {
   const [adminNotes, setAdminNotes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionNotes, setRejectionNotes] = useState('');
+  const [deletionReason, setDeletionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   // Check if user has admin access
@@ -151,7 +157,7 @@ const AdminDashboardPage: React.FC = () => {
 
     try {
       setActionLoading(true);
-      const response = await adminApi.approveProperty(selectedProperty.id, adminNotes);
+      const response = await adminApi.approveProperty(selectedProperty.property_id, adminNotes);
       
       if (response.success) {
         toast.success(`Property ${response.data.survey_number} approved successfully!`);
@@ -177,7 +183,7 @@ const AdminDashboardPage: React.FC = () => {
     try {
       setActionLoading(true);
       const response = await adminApi.rejectProperty(
-        selectedProperty.id, 
+        selectedProperty.property_id, 
         rejectionReason.trim(), 
         rejectionNotes
       );
@@ -198,10 +204,38 @@ const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!selectedProperty || !deletionReason.trim()) {
+      toast.error('Please provide a deletion reason');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const response = await adminApi.deleteProperty(
+        selectedProperty.property_id, 
+        deletionReason.trim()
+      );
+      
+      if (response.success) {
+        toast.success(`Property ${response.data.survey_number} deleted successfully!`);
+        setDeleteDialog(false);
+        setDeletionReason('');
+        setSelectedProperty(null);
+        loadPendingApprovals();
+        loadApprovalStats();
+      }
+    } catch (error) {
+      toast.error('Failed to delete property');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleViewDetails = async (property: PendingApproval) => {
     try {
       setSelectedProperty(property);
-      const response = await adminApi.getPropertyForApproval(property.id);
+      const response = await adminApi.getPropertyForApproval(property.property_id);
       if (response.success) {
         setPropertyDetails(response.data.property);
         setPropertyDetailsDialog(true);
@@ -541,12 +575,31 @@ const AdminDashboardPage: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">
-                        {property.surveyor.first_name} {property.surveyor.last_name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {property.surveyor.employee_id}
-                      </Typography>
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {property.surveyor.first_name} {property.surveyor.last_name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          ID: {property.surveyor.employee_id}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                          <EmailIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {property.surveyor.email}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <PhoneIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {property.surveyor.phone}
+                          </Typography>
+                        </Box>
+                        {property.surveyor.department && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Dept: {property.surveyor.department}
+                          </Typography>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell>
                       {new Date(property.survey_date).toLocaleDateString()}
@@ -583,6 +636,18 @@ const AdminDashboardPage: React.FC = () => {
                             }}
                           >
                             <CancelIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setSelectedProperty(property);
+                              setDeleteDialog(true);
+                            }}
+                          >
+                            <DeleteIcon />
                           </IconButton>
                         </Tooltip>
                       </Stack>
@@ -740,6 +805,12 @@ const AdminDashboardPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">
                     ID: {propertyDetails.surveyor.employee_id} | Role: {propertyDetails.surveyor.role}
                   </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Email: {propertyDetails.surveyor.email}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Phone: {propertyDetails.surveyor.phone}
+                  </Typography>
                   {propertyDetails.surveyor.department && (
                     <Typography variant="body2" color="text.secondary">
                       Department: {propertyDetails.surveyor.department}
@@ -776,6 +847,51 @@ const AdminDashboardPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPropertyDetailsDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialog} onClose={() => setDeleteDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Delete Property Survey</DialogTitle>
+        <DialogContent>
+          {selectedProperty && (
+            <Box sx={{ mb: 2 }}>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This action will permanently remove the property survey from the system. This action cannot be undone.
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                Survey Number: <strong>{selectedProperty.survey_number}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Owner: <strong>{selectedProperty.owner_name}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Location: <strong>{selectedProperty.locality}</strong>
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Deletion Reason *"
+            value={deletionReason}
+            onChange={(e) => setDeletionReason(e.target.value)}
+            placeholder="Please provide a clear reason for deletion..."
+            required
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(false)}>Cancel</Button>
+          <Button
+            onClick={handleDelete}
+            variant="contained"
+            color="error"
+            disabled={actionLoading || !deletionReason.trim()}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
+          >
+            {actionLoading ? 'Deleting...' : 'Delete'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

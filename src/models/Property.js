@@ -410,11 +410,33 @@ const Property = sequelize.define('Property', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     comment: 'Number of times this property has been edited'
+  },
+  
+  // Soft Delete Fields
+  deleted_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when property was soft deleted'
+  },
+  deleted_by: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    comment: 'ID of admin user who deleted the property'
+  },
+  deletion_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Reason for deletion provided by admin'
   }
 }, {
   tableName: 'properties',
   timestamps: true,
-  underscored: true
+  underscored: true,
+  paranoid: false // We'll handle soft delete manually for better control
 });
 
 module.exports = Property; 
