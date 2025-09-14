@@ -264,7 +264,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     if (imageId) {
       // Use backend image proxy for existing images
       const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const imageProxyUrl = `${apiBaseUrl}/api/images/${imageId}`;
+      const imageProxyUrl = `${apiBaseUrl}/images/${imageId}`; // Fixed: Removed extra /api
       console.log(`🔗 Generated image proxy URL: ${imageProxyUrl}`);
       return imageProxyUrl;
     }
