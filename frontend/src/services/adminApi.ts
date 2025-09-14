@@ -3,6 +3,7 @@ import { Base64ImageData } from '../types';
 
 export interface PendingApproval {
   id: string;
+  property_id: string; // Add property_id field
   survey_number: string;
   owner_name: string;
   locality: string;

@@ -49,8 +49,7 @@ import { useAuth } from '../contexts/AuthContext';
 import adminApi, { 
   PendingApproval, 
   ApprovalStats, 
-  PropertyForApproval,
-  DeleteResponse
+  PropertyForApproval
 } from '../services/adminApi';
 import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 
