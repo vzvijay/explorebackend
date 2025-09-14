@@ -6,6 +6,11 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import '@mui/material/styles';
 import '@mui/icons-material';
+import '@mui/material/Button';
+import '@mui/material/IconButton';
+import '@mui/material/TableCell';
+import '@mui/material/TableRow';
+import '@mui/material/Stack';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
