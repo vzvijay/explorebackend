@@ -1861,7 +1861,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Helper function to check if data has changed
   const hasDataChanged = (currentData: any, lastSavedData: any): boolean => {
-    if (!lastSavedData) return true; // First save
+    console.log('🔍 Checking if data has changed...', {
+      hasLastSavedData: !!lastSavedData,
+      currentDataKeys: Object.keys(currentData).length,
+      lastSavedDataKeys: lastSavedData ? Object.keys(lastSavedData).length : 0
+    });
+    
+    if (!lastSavedData) {
+      console.log('🆕 First save - data has changed');
+      return true; // First save
+    }
     
     // Compare key fields that matter for auto-save
     const fieldsToCompare = [
@@ -1874,22 +1883,40 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       'owner_photo_image_id', 'signature_image_id', 'sketch_photo_image_id'
     ];
     
+    let hasChanges = false;
     for (const field of fieldsToCompare) {
-      if (currentData[field] !== lastSavedData[field]) {
+      const currentValue = currentData[field];
+      const lastSavedValue = lastSavedData[field];
+      
+      if (currentValue !== lastSavedValue) {
         console.log(`🔄 Data changed in field: ${field}`, {
-          current: currentData[field],
-          lastSaved: lastSavedData[field]
+          current: currentValue,
+          lastSaved: lastSavedValue,
+          types: { current: typeof currentValue, lastSaved: typeof lastSavedValue }
         });
-        return true;
+        hasChanges = true;
       }
     }
     
-    return false;
+    if (!hasChanges) {
+      console.log('✅ No changes detected - auto-save will be skipped');
+    }
+    
+    return hasChanges;
   };
 
   // Auto-save function
   const autoSaveDraft = async () => {
-    if (!autoSaveEnabled || isUserTyping) return;
+    console.log('🔄 Auto-save triggered', {
+      autoSaveEnabled,
+      isUserTyping,
+      hasLastSavedData: !!lastSavedData
+    });
+    
+    if (!autoSaveEnabled || isUserTyping) {
+      console.log('⏭️ Auto-save skipped: disabled or user typing');
+      return;
+    }
     
     try {
       const apiData = {
@@ -3660,3 +3687,4 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 };
 
 export default PropertySurveyForm; 
+
