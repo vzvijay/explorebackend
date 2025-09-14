@@ -2204,14 +2204,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       let response;
       
       if (isEditMode && editingProperty) {
-        response = await propertiesApi.updateProperty(editingProperty.id, apiData);
+        response = await propertiesApi.updateProperty(editingProperty.property_id, apiData);
         toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         
         // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
         // No separate API call needed - sketch_photo is included in apiData
         
         try {
-          await propertiesApi.submitProperty(editingProperty.id);
+          await propertiesApi.submitProperty(editingProperty.property_id);
           toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
         } catch (submitError: any) {
           console.error('❌ Error submitting property:', submitError);
