@@ -171,6 +171,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [autoSaveEnabled] = useState(true);
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
   const [isUserTyping, setIsUserTyping] = useState(false);
+  const [lastSavedData, setLastSavedData] = useState<any>(null);
   
   // Form data state
   const [formData, setFormData] = useState<FormData>({
@@ -1858,17 +1859,39 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
   };
 
+  // Helper function to check if data has changed
+  const hasDataChanged = (currentData: any, lastSavedData: any): boolean => {
+    if (!lastSavedData) return true; // First save
+    
+    // Compare key fields that matter for auto-save
+    const fieldsToCompare = [
+      'owner_name', 'owner_father_name', 'owner_phone', 'owner_email',
+      'house_number', 'street_name', 'locality', 'ward_number', 'pincode',
+      'property_type', 'construction_type', 'construction_year', 'number_of_floors',
+      'plot_area', 'built_up_area', 'carpet_area', 'latitude', 'longitude',
+      'water_connection', 'electricity_connection', 'sewage_connection',
+      'solar_panel', 'rain_water_harvesting', 'building_permission',
+      'owner_photo_image_id', 'signature_image_id', 'sketch_photo_image_id'
+    ];
+    
+    for (const field of fieldsToCompare) {
+      if (currentData[field] !== lastSavedData[field]) {
+        console.log(`🔄 Data changed in field: ${field}`, {
+          current: currentData[field],
+          lastSaved: lastSavedData[field]
+        });
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   // Auto-save function
   const autoSaveDraft = async () => {
     if (!autoSaveEnabled || isUserTyping) return;
     
     try {
-      // Debug: Log what we're trying to save
-      console.log('🔄 Auto-save attempt:', {
-        owner_name: formData.owner_name,
-        locality: formData.locality,
-        survey_status: 'draft'
-      });
       const apiData = {
         ...formData,
         ward_number: formData.ward_number ? parseInt(formData.ward_number) : null,
@@ -1897,6 +1920,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         }
       });
 
+      // Check if data has changed before saving
+      if (!hasDataChanged(apiData, lastSavedData)) {
+        console.log('⏭️ Auto-save skipped: No changes detected');
+        return;
+      }
+
+      console.log('💾 Auto-save proceeding: Data has changed');
+
       if (isEditMode && editingProperty?.property_id) {
         // In edit mode, update the existing property
         await propertiesApi.updateProperty(editingProperty.property_id, apiData as any);
@@ -1905,6 +1936,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         await propertiesApi.createProperty(apiData as any);
       }
       setLastAutoSave(new Date());
+      setLastSavedData(apiData); // Store the saved data for comparison
       
       // Show subtle notification
       toast.success('💾 Form auto-saved', {
