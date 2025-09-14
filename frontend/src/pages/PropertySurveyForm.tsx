@@ -2249,16 +2249,26 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         console.log('⚠️ Creating new property (not in edit mode)');
         response = await propertiesApi.createProperty(apiData);
         
-        // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
-        // No separate API call needed - sketch_photo is included in apiData
-        
-        if (response.data && response.data.property && response.data.property.id) {
+        // Check if this was actually an update of existing draft
+        if (response.data && (response.data as any).message && (response.data as any).message.includes('Draft property updated successfully')) {
+          console.log('✅ Draft property was updated successfully');
+          toast.success(`Draft property updated successfully! Survey ID: ${formData.survey_number}`);
+          
+          // Submit the updated draft
+          if (response.data.property && response.data.property.property_id) {
+            await propertiesApi.submitProperty(response.data.property.property_id);
+            toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
+          }
+        } else if (response.data && response.data.property && response.data.property.id) {
+          // New property created
           await propertiesApi.submitProperty(response.data.property.id);
           toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
         }
         
-        // Reset form for new surveys
-        setFormData({
+        // Only reset form for truly new surveys (not draft updates)
+        if (!(response.data as any)?.message?.includes('Draft property updated successfully')) {
+          // Reset form for new surveys
+          setFormData({
           property_id: `PROP-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
           survey_number: `SUR-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
           old_mc_property_number: '',
@@ -2304,6 +2314,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           remarks: '',
           edit_comment: ''
         });
+        }
         setPropertyUse({
           halls: [],
           bedrooms: [],

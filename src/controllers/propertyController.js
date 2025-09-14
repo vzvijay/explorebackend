@@ -44,10 +44,24 @@ const createProperty = async (req, res) => {
     });
 
     if (existingProperty) {
-      return res.status(400).json({
-        success: false,
-        message: 'Property ID already exists'
-      });
+      // If property exists and is in draft status, allow updating it
+      if (existingProperty.survey_status === 'draft') {
+        console.log(`🔄 Updating existing draft property: ${propertyData.property_id}`);
+        
+        // Update the existing draft property
+        const updatedProperty = await existingProperty.update(propertyData);
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Draft property updated successfully',
+          property: updatedProperty
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Property ID already exists and is not in draft status'
+        });
+      }
     }
 
     // Debug and validate date fields
