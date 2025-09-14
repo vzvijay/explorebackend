@@ -31,9 +31,12 @@ const EditPropertyPage: React.FC = () => {
   const loadProperty = async () => {
     try {
       setLoading(true);
+      console.log('🔍 EditPropertyPage: Loading property with ID:', id);
       const response = await propertiesApi.getProperty(id!);
+      console.log('🔍 EditPropertyPage: Property loaded:', response.data.property);
       setProperty(response.data.property);
     } catch (error: any) {
+      console.error('❌ EditPropertyPage: Failed to load property:', error);
       setError('Failed to load property data');
       toast.error('Failed to load property data');
     } finally {
@@ -143,6 +146,12 @@ const EditPropertyPage: React.FC = () => {
         propertyToEdit={property}
         onEditComplete={handleEditComplete}
       />
+      {/* Debug info */}
+      {console.log('🔍 EditPropertyPage: Passing props to PropertySurveyForm:', { 
+        editMode: true, 
+        propertyToEdit: property, 
+        propertyId: property?.property_id 
+      })}
     </Box>
   );
 };
