@@ -3002,6 +3002,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                       <Grid item xs={12} sm={6}>
                         <Box sx={{ textAlign: 'center' }}>
                           <img 
+                            key={ownerPhotoImageId || 'owner-fallback'}
                             src={getImageUrl(ownerPhotoImageId, capturedPhoto)} 
                             alt="Captured" 
                             style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
@@ -3060,6 +3061,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   return (
                     <Box sx={{ textAlign: 'center' }}>
                       <img 
+                        key={signatureImageId || 'signature-fallback'}
                         src={getImageUrl(signatureImageId, signatureData)} 
                         alt="Signature" 
                         style={{ border: '1px solid #ccc', maxWidth: '300px' }}
@@ -3137,6 +3139,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     <Grid item xs={12} sm={6}>
                       <Box sx={{ textAlign: 'center' }}>
                             <img 
+                              key={sketchPhotoImageId || 'sketch-fallback'}
                               src={getImageUrl(sketchPhotoImageId, sketchPhoto) || (sketchPhotoBase64 ? `data:${sketchPhotoBase64.type};base64,${sketchPhotoBase64.data}` : '')} 
                             alt="Sketch" 
                             style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc' }}
