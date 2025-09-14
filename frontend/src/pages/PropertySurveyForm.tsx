@@ -2170,9 +2170,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         return;
       }
 
-      if (isEditMode && editingProperty && editingProperty.survey_status !== 'draft') {
+      if (isEditMode && editingProperty) {
         if (!formData.edit_comment || formData.edit_comment.trim() === '') {
-          toast.error('Edit comment is required for post-submission edits');
+          toast.error('Edit comment is required for editing surveys');
           setLoading(false);
           return;
         }
@@ -2204,8 +2204,23 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       let response;
       
       if (isEditMode && editingProperty) {
-        response = await propertiesApi.updateProperty(editingProperty.property_id, apiData);
-        toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
+        try {
+          response = await propertiesApi.updateProperty(editingProperty.property_id, apiData);
+          toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
+        } catch (updateError: any) {
+          console.error('❌ Error updating property:', updateError);
+          console.error('❌ Full update error response:', updateError.response?.data);
+          
+          // Show detailed validation errors if available
+          if (updateError.response?.data?.errors) {
+            const errorMessages = updateError.response.data.errors.map((err: any) => err.msg).join(', ');
+            toast.error(`Validation errors: ${errorMessages}`);
+          } else {
+            toast.error(`Failed to update survey: ${updateError.response?.data?.message || 'Unknown error'}`);
+          }
+          setLoading(false);
+          return;
+        }
         
         // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data
         // No separate API call needed - sketch_photo is included in apiData
@@ -2215,7 +2230,15 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
         } catch (submitError: any) {
           console.error('❌ Error submitting property:', submitError);
-          toast.error(`Failed to submit survey: ${submitError.response?.data?.message || 'Unknown error'}`);
+          console.error('❌ Full error response:', submitError.response?.data);
+          
+          // Show detailed validation errors if available
+          if (submitError.response?.data?.errors) {
+            const errorMessages = submitError.response.data.errors.map((err: any) => err.msg).join(', ');
+            toast.error(`Validation errors: ${errorMessages}`);
+          } else {
+            toast.error(`Failed to submit survey: ${submitError.response?.data?.message || 'Unknown error'}`);
+          }
         }
         
         if (onEditComplete) {
@@ -3499,7 +3522,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               </Card>
             
             {/* Edit Comment for Edit Mode */}
-            {isEditMode && editingProperty && editingProperty.survey_status !== 'draft' && (
+            {isEditMode && editingProperty && (
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
