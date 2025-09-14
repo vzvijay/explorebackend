@@ -263,7 +263,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const getImageUrl = (imageId: string | null, fallbackUrl: string | null): string | undefined => {
     if (imageId) {
       // Use backend image proxy for existing images
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
       const imageProxyUrl = `${apiBaseUrl}/images/${imageId}`; // Fixed: Removed extra /api
       console.log(`🔗 Generated image proxy URL: ${imageProxyUrl}`);
       return imageProxyUrl;
@@ -1115,6 +1115,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           console.error('❌ Video stream never produced content after 3 seconds');
           toast.error('Camera is not producing content. Please check camera permissions and try again.');
           setPhotoCapturing(false);
+          // Stop camera stream to close camera
+          stream.getTracks().forEach(track => track.stop());
           return;
         }
         
@@ -1217,6 +1219,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               console.error('❌ Video never produced content after 15 seconds');
               toast.error('Camera is not producing content. Please check camera and try again.');
               setPhotoCapturing(false);
+              // Stop camera stream to close camera
+              stream.getTracks().forEach(track => track.stop());
               return false;
             }
             return false;
@@ -1233,6 +1237,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
               toast.error('Camera is producing black frames. Please check camera and try again.');
               setPhotoCapturing(false);
+              // Stop camera stream to close camera
+              stream.getTracks().forEach(track => track.stop());
               return;
             }
             
@@ -1287,6 +1293,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               setPhotoCapturing(false);
               toast.success('Owner/Tenant Photo Captured Successfully!');
             });
+            
+            // Stop camera stream to close camera
+            stream.getTracks().forEach(track => track.stop());
           };
           
           // Start with initial delay, then begin content detection
