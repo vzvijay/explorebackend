@@ -1957,21 +1957,32 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       if (isEditMode && editingProperty?.property_id) {
         // In edit mode, update the existing property
+        console.log('🔄 Attempting to update property:', editingProperty.property_id);
         await propertiesApi.updateProperty(editingProperty.property_id, apiData as any);
+        console.log('✅ Property update successful');
       } else {
         // In create mode, create a new property
+        console.log('🔄 Attempting to create new property');
         await propertiesApi.createProperty(apiData as any);
+        console.log('✅ Property creation successful');
       }
       setLastAutoSave(new Date());
       setLastSavedData(apiData); // Store the saved data for comparison
+      console.log('✅ Auto-save completed successfully, lastSavedData updated');
       
       // Show subtle notification
       toast.success('💾 Form auto-saved', {
         position: 'bottom-right'
       });
     } catch (error) {
-      // Debug: Log auto-save errors
-      console.error('❌ Auto-save failed:', error);
+      // Debug: Log auto-save errors with more detail
+      console.error('❌ Auto-save failed:', {
+        error: error,
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
       // Don't show error toast for auto-save failures to avoid annoying users
     }
   };
