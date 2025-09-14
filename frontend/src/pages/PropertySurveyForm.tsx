@@ -1436,9 +1436,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       toast.info('Opening camera for sketch... Please wait.');
       
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const cameraMode = isMobileDevice() ? 'environment' : 'user';
+        console.log(`📱 Device: ${isMobileDevice() ? 'Mobile' : 'Desktop'}, Camera: ${cameraMode}`);
+        
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
-            facingMode: 'environment',
+            facingMode: cameraMode,
             width: { ideal: 1920 },
             height: { ideal: 1080 }
           } 
