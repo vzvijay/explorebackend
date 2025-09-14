@@ -2204,9 +2204,19 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
       let response;
       
-      if (isEditMode && editingProperty) {
+      // Check if we have existing property data (for both edit mode and create mode with existing data)
+      const hasExistingProperty = (isEditMode && editingProperty) || 
+                                 (!isEditMode && formData.property_id && formData.survey_number);
+      
+      if (hasExistingProperty) {
         try {
-          response = await propertiesApi.updateProperty(editingProperty.property_id, apiData);
+          // Determine property ID to use
+          const propertyId = (isEditMode && editingProperty) ? 
+                            editingProperty.property_id : 
+                            formData.property_id;
+          
+          console.log('🔄 Updating existing property:', propertyId);
+          response = await propertiesApi.updateProperty(propertyId, apiData);
           toast.success(`Property survey updated successfully! Survey ID: ${formData.survey_number}`);
         } catch (updateError: any) {
           console.error('❌ Error updating property:', updateError);
@@ -2227,7 +2237,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         // No separate API call needed - sketch_photo is included in apiData
         
         try {
-          await propertiesApi.submitProperty(editingProperty.property_id);
+          // Use the same property ID logic for submission
+          const propertyId = (isEditMode && editingProperty) ? 
+                            editingProperty.property_id : 
+                            formData.property_id;
+          await propertiesApi.submitProperty(propertyId);
           toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
         } catch (submitError: any) {
           console.error('❌ Error submitting property:', submitError);
