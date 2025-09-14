@@ -1483,7 +1483,31 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         
+        if (attempts >= maxAttempts) {
+          console.error('❌ Video stream never produced content after 3 seconds');
+          toast.error('Camera is not producing content. Please check camera permissions and try again.');
+          setSketchPhotoCapturing(false);
+          return;
+        }
+        
         toast.info('Camera ready! Position your sketch in frame and click capture.');
+        
+        // TEST: Add video element to DOM temporarily to see if video stream works
+        video.style.position = 'fixed';
+        video.style.top = '10px';
+        video.style.right = '10px';
+        video.style.width = '200px';
+        video.style.height = '150px';
+        video.style.border = '2px solid red';
+        video.style.zIndex = '9999';
+        document.body.appendChild(video);
+        
+        // Remove video element after 5 seconds
+        setTimeout(() => {
+          if (video.parentNode) {
+            video.parentNode.removeChild(video);
+          }
+        }, 5000);
         
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -1491,6 +1515,47 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         const ctx = canvas.getContext('2d');
         
         if (ctx) {
+          // CRITICAL: Wait for video to actually have content before drawing
+          let drawAttempts = 0;
+          const maxDrawAttempts = 150; // 15 seconds max - camera needs even more time to warm up
+          
+          // Add initial delay to let camera fully initialize
+          toast.info('Initializing camera... Please wait');
+          
+          while (drawAttempts < maxDrawAttempts) {
+            // Test if video has actual content (not just black frames)
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = video.videoWidth;
+            testCanvas.height = video.videoHeight;
+            const testCtx = testCanvas.getContext('2d');
+            
+            if (testCtx) {
+              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
+              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+              const hasContent = testImageData.data.some(pixel => pixel !== 0);
+              
+              if (hasContent) {
+                console.log(`✅ Video has content after ${drawAttempts} attempts`);
+                break;
+              }
+            }
+            
+            drawAttempts++;
+            if (drawAttempts % 50 === 0) {
+              const remaining = Math.ceil((maxDrawAttempts - drawAttempts) / 50);
+              toast.info(`Camera initializing... ${remaining} seconds remaining`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          if (drawAttempts >= maxDrawAttempts) {
+            console.error('❌ Video stream never produced content after 15 seconds');
+            toast.error('Camera is not producing content. Please check camera permissions and try again.');
+            setSketchPhotoCapturing(false);
+            return;
+          }
+          
+          // Now draw the actual image
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
           // Use simple compression like owner photos (smartCompressImage corrupts sketch photos)
