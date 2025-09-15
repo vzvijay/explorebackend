@@ -263,7 +263,13 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
       if (isNaN(date.getTime())) {
         return '';
       }
-      return date.toISOString().split('T')[0];
+      
+      // Convert to DD/MM/YYYY format for DateInput component
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear().toString();
+      
+      return `${day}/${month}/${year}`;
     } catch {
       return '';
     }
@@ -404,14 +410,17 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Auto-save useEffect
   useEffect(() => {
-    if (!autoSaveEnabled || isUserTyping) return;
+    // Disable auto-save for submitted properties (requires edit comment)
+    const isSubmittedProperty = isEditMode && editingProperty && editingProperty.survey_status !== 'draft';
+    
+    if (!autoSaveEnabled || isUserTyping || isSubmittedProperty) return;
 
     const interval = setInterval(() => {
       autoSaveDraft();
     }, 10000); // Auto-save every 10 seconds - Updated timing fix
 
     return () => clearInterval(interval);
-  }, [formData, autoSaveEnabled, isEditMode, isUserTyping, ownerPhotoImageId, signatureImageId, sketchPhotoImageId]);
+  }, [formData, autoSaveEnabled, isEditMode, isUserTyping, ownerPhotoImageId, signatureImageId, sketchPhotoImageId, editingProperty]);
 
   // Utility functions
   const validateAadhar = (aadhar: string): boolean => {
@@ -1739,14 +1748,22 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Auto-save function
   const autoSaveDraft = async () => {
+    // Check if this is a submitted property (not draft)
+    const isSubmittedProperty = isEditMode && editingProperty && editingProperty.survey_status !== 'draft';
+    
     console.log('🔄 Auto-save triggered', {
       autoSaveEnabled,
       isUserTyping,
+      isSubmittedProperty,
       hasLastSavedData: !!lastSavedDataRef.current
     });
     
-    if (!autoSaveEnabled || isUserTyping) {
-      console.log('⏭️ Auto-save skipped: disabled or user typing');
+    if (!autoSaveEnabled || isUserTyping || isSubmittedProperty) {
+      if (isSubmittedProperty) {
+        console.log('⏭️ Auto-save skipped: submitted property requires manual save with edit comment');
+      } else {
+        console.log('⏭️ Auto-save skipped: disabled or user typing');
+      }
       return;
     }
     
@@ -3319,21 +3336,41 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           {autoSaveEnabled && (
             <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
-                {isUserTyping ? (
-                  <>
-                    <CircularProgress size={16} sx={{ mr: 1 }} />
-                    Typing... Auto-save paused
-                  </>
-                ) : (
-                  <>
-                    💾 Auto-save enabled
-                    {lastAutoSave && (
-                      <span style={{ marginLeft: '8px' }}>
-                        • Last saved: {lastAutoSave.toLocaleTimeString()}
-                      </span>
-                    )}
-                  </>
-                )}
+                {(() => {
+                  // Check if this is a submitted property (not draft)
+                  const isSubmittedProperty = isEditMode && editingProperty && editingProperty.survey_status !== 'draft';
+                  
+                  if (isSubmittedProperty) {
+                    return (
+                      <>
+                        ⚠️ Auto-save disabled for submitted properties
+                        <span style={{ marginLeft: '8px', fontSize: '0.8em' }}>
+                          (Manual save with edit comment required)
+                        </span>
+                      </>
+                    );
+                  }
+                  
+                  if (isUserTyping) {
+                    return (
+                      <>
+                        <CircularProgress size={16} sx={{ mr: 1 }} />
+                        Typing... Auto-save paused
+                      </>
+                    );
+                  }
+                  
+                  return (
+                    <>
+                      💾 Auto-save enabled
+                      {lastAutoSave && (
+                        <span style={{ marginLeft: '8px' }}>
+                          • Last saved: {lastAutoSave.toLocaleTimeString()}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
               </Typography>
             </Box>
           )}

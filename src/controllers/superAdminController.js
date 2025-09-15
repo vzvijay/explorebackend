@@ -1,4 +1,5 @@
 const { Property, PropertyImage, User } = require('../models');
+const { Op } = require('sequelize');
 const gitlabService = require('../services/gitlabService');
 
 /**
@@ -141,11 +142,11 @@ const getDeletableProperties = async (req, res) => {
     // Build search conditions
     const searchConditions = {};
     if (search) {
-      searchConditions[Property.sequelize.Op.or] = [
-        { survey_number: { [Property.sequelize.Op.iLike]: `%${search}%` } },
-        { owner_name: { [Property.sequelize.Op.iLike]: `%${search}%` } },
-        { locality: { [Property.sequelize.Op.iLike]: `%${search}%` } },
-        { property_id: { [Property.sequelize.Op.iLike]: `%${search}%` } }
+      searchConditions[Op.or] = [
+        { survey_number: { [Op.iLike]: `%${search}%` } },
+        { owner_name: { [Op.iLike]: `%${search}%` } },
+        { locality: { [Op.iLike]: `%${search}%` } },
+        { property_id: { [Op.iLike]: `%${search}%` } }
       ];
     }
 
