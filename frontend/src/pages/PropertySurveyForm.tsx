@@ -158,6 +158,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null);
   const [photoCapturing, setPhotoCapturing] = useState(false);
   const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
+  
+  // Camera preview states for manual capture
+  const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraVideoRef, setCameraVideoRef] = useState<HTMLVideoElement | null>(null);
+  const [cameraType, setCameraType] = useState<'owner' | 'sketch' | 'signature'>('owner');
   const [signatureData, setSignatureData] = useState<string>('');
   const [signatureMode, setSignatureMode] = useState<'draw' | 'photo'>('draw');
   const [signaturePhoto, setSignaturePhoto] = useState<string | null>(null);
@@ -243,8 +249,19 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // Data conversion helper functions for edit mode
   const safeDateConversion = (isoDate: string | null | undefined): string => {
     if (!isoDate) return '';
+    
+    // Handle invalid date strings from mobile browsers
+    if (isoDate === 'Invalid date' || isoDate === 'undefined' || isoDate === 'null') {
+      return '';
+    }
+    
     try {
-      return new Date(isoDate).toISOString().split('T')[0];
+      const date = new Date(isoDate);
+      // Check if the date is actually valid
+      if (isNaN(date.getTime())) {
+        return '';
+      }
+      return date.toISOString().split('T')[0];
     } catch {
       return '';
     }
@@ -451,6 +468,14 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const handleInputChange = (field: keyof FormData, value: any) => {
+    // Special handling for date fields on mobile to prevent "Invalid date" errors
+    if (field === 'bp_date' || field === 'water_connection_date') {
+      // Ensure we don't send "Invalid date" strings from mobile browsers
+      if (value === 'Invalid date' || value === 'undefined' || value === 'null') {
+        value = '';
+      }
+    }
+    
     setFormData(prev => ({ ...prev, [field]: value }));
     
     // Set typing state and clear it after 2 seconds of inactivity
@@ -1061,6 +1086,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const capturePhoto = async () => {
+    await openCameraPreview('owner');
+  };
+
+  const capturePhotoOld = async () => {
     try {
       setPhotoCapturing(true);
       toast.info('Opening camera... Please wait.');
@@ -1342,6 +1371,147 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Camera preview functions for manual capture
+  const openCameraPreview = async (type: 'owner' | 'sketch' | 'signature') => {
+    try {
+      setCameraType(type);
+      toast.info('Opening camera... Please wait.');
+      
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: isMobileDevice() ? 'environment' : 'user',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          } 
+        });
+        
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        video.play();
+        
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(true);
+        });
+        
+        // Set up camera preview
+        setCameraStream(stream);
+        setCameraVideoRef(video);
+        setCameraPreviewOpen(true);
+        
+        toast.success('Camera ready! Position your subject in frame and click "Capture" when ready.');
+        
+      } else {
+        toast.info('Camera not supported. Opening file upload...');
+        openFileInput();
+      }
+    } catch (error) {
+      console.error('Camera access error:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          toast.error('Camera access denied. Please allow camera permissions or use file upload.');
+          openFileInput();
+        } else if (error.name === 'NotFoundError') {
+          toast.error('No camera found. Please use file upload.');
+          openFileInput();
+        } else {
+          toast.error('Camera error. Please use file upload.');
+          openFileInput();
+        }
+      } else {
+        toast.error('Camera error. Please use file upload.');
+        openFileInput();
+      }
+    }
+  };
+
+  const closeCameraPreview = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    setCameraStream(null);
+    setCameraVideoRef(null);
+    setCameraPreviewOpen(false);
+  };
+
+  const captureFromPreview = () => {
+    if (!cameraVideoRef || !cameraStream) {
+      toast.error('Camera not ready. Please try again.');
+      return;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = cameraVideoRef.videoWidth;
+      canvas.height = cameraVideoRef.videoHeight;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        toast.error('Failed to create canvas. Please try again.');
+        return;
+      }
+
+      // Draw video frame to canvas
+      ctx.drawImage(cameraVideoRef, 0, 0, canvas.width, canvas.height);
+      
+      // Check if canvas has content
+      const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const hasContent = testImageData.data.some(pixel => pixel !== 0);
+      
+      if (!hasContent) {
+        toast.error('Failed to capture photo. Please try again.');
+        return;
+      }
+      
+      // Compress the image
+      let compressedDataUrl;
+      try {
+        compressedDataUrl = smartCompressImage(canvas, cameraType === 'owner' ? 'owner' : cameraType === 'sketch' ? 'sketch' : 'signature');
+        
+        if (!compressedDataUrl || compressedDataUrl.length < 100) {
+          throw new Error('Smart compression produced invalid result');
+        }
+        
+      } catch (error) {
+        console.warn('⚠️ Smart compression failed, using fallback:', error);
+        compressedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      }
+      
+      // Process based on camera type
+      if (cameraType === 'owner') {
+        setCapturedPhoto(compressedDataUrl);
+        const file = dataURLtoFile(compressedDataUrl, 'owner_photo.jpg');
+        uploadImageToGitLab(file, 'owner_photo', (imageId) => {
+          setOwnerPhotoImageId(imageId);
+          closeCameraPreview();
+          toast.success('Owner/Tenant Photo Captured Successfully!');
+        });
+      } else if (cameraType === 'sketch') {
+        setSketchPhoto(compressedDataUrl);
+        const file = dataURLtoFile(compressedDataUrl, 'sketch_photo.jpg');
+        uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
+          setSketchPhotoImageId(imageId);
+          closeCameraPreview();
+          toast.success('Sketch Photo Captured Successfully!');
+        });
+      } else if (cameraType === 'signature') {
+        setSignaturePhoto(compressedDataUrl);
+        const file = dataURLtoFile(compressedDataUrl, 'signature.jpg');
+        uploadImageToGitLab(file, 'signature', (imageId) => {
+          setSignatureImageId(imageId);
+          closeCameraPreview();
+          toast.success('Signature Photo Captured Successfully!');
+        });
+      }
+      
+    } catch (error) {
+      console.error('Capture error:', error);
+      toast.error('Failed to capture photo. Please try again.');
+    }
+  };
+
   const openFileInput = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1448,6 +1618,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   };
 
   const captureSketchPhoto = async () => {
+    await openCameraPreview('sketch');
+  };
+
+  const captureSketchPhotoOld = async () => {
     try {
       setSketchPhotoCapturing(true);
       toast.info('Opening camera for sketch... Please wait.');
@@ -1654,6 +1828,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Signature photo functions - Reuse existing photo capture logic
   const captureSignaturePhoto = async () => {
+    await openCameraPreview('signature');
+  };
+
+  const captureSignaturePhotoOld = async () => {
     try {
       setSignaturePhotoCapturing(true);
       toast.info('Opening camera for signature... Please wait.');
@@ -2360,19 +2538,37 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     }
   };
 
+  // Form data sanitization function to prevent mobile date errors
+  const sanitizeFormData = (data: FormData): FormData => {
+    const sanitized = { ...data };
+    
+    // Sanitize date fields to prevent "Invalid date" strings from mobile browsers
+    const dateFields: (keyof FormData)[] = ['bp_date', 'water_connection_date'];
+    dateFields.forEach(field => {
+      if (sanitized[field] === 'Invalid date' || 
+          sanitized[field] === 'undefined' || 
+          sanitized[field] === 'null') {
+        (sanitized as any)[field] = '';
+      }
+    });
+    
+    return sanitized;
+  };
+
   // Form submission functions
   const saveDraft = async () => {
     setLoading(true);
     try {
+      const sanitizedData = sanitizeFormData(formData);
       const apiData = {
-        ...formData,
-        ward_number: parseInt(formData.ward_number),
-        construction_year: formData.construction_year ? parseInt(formData.construction_year) : null,
-        plot_area: parseFloat(formData.plot_area),
-        built_up_area: parseFloat(formData.built_up_area),
-        carpet_area: parseFloat(formData.carpet_area),
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
+        ...sanitizedData,
+        ward_number: parseInt(sanitizedData.ward_number),
+        construction_year: sanitizedData.construction_year ? parseInt(sanitizedData.construction_year) : null,
+        plot_area: parseFloat(sanitizedData.plot_area),
+        built_up_area: parseFloat(sanitizedData.built_up_area),
+        carpet_area: parseFloat(sanitizedData.carpet_area),
+        latitude: parseFloat(sanitizedData.latitude),
+        longitude: parseFloat(sanitizedData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
         // GitLab image references only
@@ -2380,8 +2576,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         signature_image_id: signatureImageId,
         sketch_photo_image_id: sketchPhotoImageId,
         // Base64 fields removed - using GitLab storage only
-        property_type: formData.property_type as any,
-        construction_type: formData.construction_type as any
+        property_type: sanitizedData.property_type as any,
+        construction_type: sanitizedData.construction_type as any
       };
 
       await propertiesApi.createProperty(apiData);
@@ -2414,15 +2610,16 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         }
       }
 
+      const sanitizedData = sanitizeFormData(formData);
       const apiData = {
-        ...formData,
-        ward_number: parseInt(formData.ward_number),
-        construction_year: formData.construction_year ? parseInt(formData.construction_year) : null,
-        plot_area: parseFloat(formData.plot_area),
-        built_up_area: parseFloat(formData.built_up_area),
-        carpet_area: parseFloat(formData.carpet_area),
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
+        ...sanitizedData,
+        ward_number: parseInt(sanitizedData.ward_number),
+        construction_year: sanitizedData.construction_year ? parseInt(sanitizedData.construction_year) : null,
+        plot_area: parseFloat(sanitizedData.plot_area),
+        built_up_area: parseFloat(sanitizedData.built_up_area),
+        carpet_area: parseFloat(sanitizedData.carpet_area),
+        latitude: parseFloat(sanitizedData.latitude),
+        longitude: parseFloat(sanitizedData.longitude),
         assessment_year: new Date().getFullYear(),
         property_use_details: propertyUse,
         // GitLab image references only
@@ -2430,8 +2627,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         signature_image_id: signatureImageId,
         sketch_photo_image_id: sketchPhotoImageId,
         // Base64 fields removed - using GitLab storage only
-        property_type: formData.property_type as any,
-        construction_type: formData.construction_type as any
+        property_type: sanitizedData.property_type as any,
+        construction_type: sanitizedData.construction_type as any
       };
 
       // Add debugging
@@ -3990,6 +4187,97 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         <DialogActions>
           <Button onClick={() => setPhotoDialogOpen(false)}>
             Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Camera Preview Dialog */}
+      <Dialog 
+        open={cameraPreviewOpen} 
+        onClose={closeCameraPreview}
+        maxWidth="lg"
+        fullWidth
+        fullScreen={isMobileDevice()}
+      >
+        <DialogTitle>
+          📸 Camera Preview - {cameraType === 'owner' ? 'Owner/Tenant Photo' : cameraType === 'sketch' ? 'Sketch Photo' : 'Signature Photo'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ textAlign: 'center', p: 2 }}>
+            <Typography variant="body1" gutterBottom sx={{ mb: 2 }}>
+              Position your subject in the frame below. Take your time to adjust the camera angle and lighting.
+            </Typography>
+            
+            {cameraVideoRef && (
+              <Box sx={{ 
+                position: 'relative', 
+                display: 'inline-block',
+                border: '3px solid #1976d2',
+                borderRadius: 2,
+                overflow: 'hidden',
+                maxWidth: '100%',
+                maxHeight: '70vh'
+              }}>
+                <video
+                  ref={(ref) => {
+                    if (ref && cameraVideoRef) {
+                      ref.srcObject = cameraVideoRef.srcObject;
+                      ref.muted = true;
+                      ref.play();
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    maxHeight: '60vh',
+                    display: 'block'
+                  }}
+                  autoPlay
+                  playsInline
+                />
+                
+                {/* Camera overlay with instructions */}
+                <Box sx={{
+                  position: 'absolute',
+                  top: 10,
+                  left: 10,
+                  right: 10,
+                  background: 'rgba(0,0,0,0.7)',
+                  color: 'white',
+                  p: 1,
+                  borderRadius: 1,
+                  fontSize: '0.875rem'
+                }}>
+                  {cameraType === 'owner' && '👤 Position the person in the center of the frame'}
+                  {cameraType === 'sketch' && '📐 Position the sketch/drawing in the center of the frame'}
+                  {cameraType === 'signature' && '✍️ Position the signature document in the center of the frame'}
+                </Box>
+              </Box>
+            )}
+            
+            <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+              💡 <strong>Tip:</strong> Ensure good lighting and keep the camera steady for best results.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button 
+            onClick={closeCameraPreview}
+            variant="outlined"
+            size="large"
+            sx={{ minWidth: 120 }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={captureFromPreview}
+            variant="contained"
+            color="primary"
+            size="large"
+            startIcon={<PhotoCamera />}
+            sx={{ minWidth: 160 }}
+          >
+            📸 Capture Photo
           </Button>
         </DialogActions>
       </Dialog>
