@@ -156,8 +156,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [sketchPhoto, setSketchPhoto] = useState<string | null>(null);
   const [sketchPhotoBase64, setSketchPhotoBase64] = useState<Base64ImageData | null>(null);
-  const [photoCapturing, setPhotoCapturing] = useState(false);
-  const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
+  // Photo capturing states removed - using new camera preview system
+  // const [photoCapturing, setPhotoCapturing] = useState(false);
+  // const [sketchPhotoCapturing, setSketchPhotoCapturing] = useState(false);
   
   // Camera preview states for manual capture
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
@@ -167,7 +168,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const [signatureData, setSignatureData] = useState<string>('');
   const [signatureMode, setSignatureMode] = useState<'draw' | 'photo'>('draw');
   const [signaturePhoto, setSignaturePhoto] = useState<string | null>(null);
-  const [signaturePhotoCapturing, setSignaturePhotoCapturing] = useState(false);
+  // const [signaturePhotoCapturing, setSignaturePhotoCapturing] = useState(false);
   
   // New GitLab image storage state
   const [ownerPhotoImageId, setOwnerPhotoImageId] = useState<string | null>(null);
@@ -1089,287 +1090,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     await openCameraPreview('owner');
   };
 
-  const capturePhotoOld = async () => {
-    try {
-      setPhotoCapturing(true);
-      toast.info('Opening camera... Please wait.');
-      
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: isMobileDevice() ? 'environment' : 'user',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          } 
-        });
-        
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        video.play();
-        
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve(true);
-        });
-        
-        // Wait for video to actually start playing and have content
-        toast.info('Waiting for camera to stabilize...');
-        
-        let attempts = 0;
-        const maxAttempts = 30; // 3 seconds max wait
-        
-        while (attempts < maxAttempts) {
-          // Check if video is playing and has content
-          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-            // Test if video has actual content (not just black frames)
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              const hasContent = testImageData.data.some(pixel => pixel !== 0);
-              
-              
-              if (hasContent) {
-                break;
-              }
-            }
-          }
-          
-          attempts++;
-          // Show progress every 5 attempts (0.5 seconds)
-          if (attempts % 5 === 0) {
-            const remaining = Math.ceil((maxAttempts - attempts) / 5);
-            toast.info(`Camera stabilizing... ${remaining} seconds remaining`);
-          }
-          await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
-        }
-        
-        if (attempts >= maxAttempts) {
-          console.error('❌ Video stream never produced content after 3 seconds');
-          toast.error('Camera is not producing content. Please check camera permissions and try again.');
-          setPhotoCapturing(false);
-          // Stop camera stream to close camera
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        
-        toast.info('Camera ready! Position the person in frame and click capture.');
-        
-        // TEST: Add video element to DOM temporarily to see if video stream works
-        video.style.position = 'fixed';
-        video.style.top = '10px';
-        video.style.right = '10px';
-        video.style.width = '200px';
-        video.style.height = '150px';
-        video.style.border = '2px solid red';
-        video.style.zIndex = '9999';
-        document.body.appendChild(video);
-        
-        // Remove video element after 5 seconds
-        setTimeout(() => {
-          if (video.parentNode) {
-            video.parentNode.removeChild(video);
-          }
-        }, 5000);
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        
-        if (ctx) {
-          
-          // TEST: Check video element properties before drawing
-          
-          // CRITICAL: Wait for video to actually have content before drawing
-          let drawAttempts = 0;
-          const maxDrawAttempts = 150; // 15 seconds max - camera needs even more time to warm up
-          
-          // Add initial delay to let camera fully initialize
-          toast.info('Initializing camera... Please wait');
-          
-          const tryDrawVideo = () => {
-            // Test if video has actual content (not just black frames)
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              
-              // ADVANCED CONTENT DETECTION: Check for meaningful brightness variation
-              const pixels = testImageData.data;
-              let totalBrightness = 0;
-              let maxBrightness = 0;
-              let minBrightness = 255;
-              let nonZeroPixels = 0;
-              
-              // Sample every 4th pixel for performance (RGBA = 4 values per pixel)
-              for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
-                const r = pixels[i];
-                const g = pixels[i + 1];
-                const b = pixels[i + 2];
-                const brightness = (r + g + b) / 3;
-                
-                totalBrightness += brightness;
-                maxBrightness = Math.max(maxBrightness, brightness);
-                minBrightness = Math.min(minBrightness, brightness);
-                
-                if (brightness > 10) { // Not just black/dark
-                  nonZeroPixels++;
-                }
-              }
-              
-              const avgBrightness = totalBrightness / (pixels.length / 16);
-              const brightnessRange = maxBrightness - minBrightness;
-              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
-              
-              console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
-              console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
-              
-              // Show progress every 10 attempts
-              if ((drawAttempts + 1) % 10 === 0) {
-                const progress = Math.round(((drawAttempts + 1) / maxDrawAttempts) * 100);
-                console.log(`📊 Camera warm-up progress: ${progress}% (${drawAttempts + 1}/${maxDrawAttempts})`);
-                toast.info(`Camera warming up... ${progress}%`);
-              }
-              
-              if (hasContent) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // Process the image immediately after successful drawing
-                processCapturedImage();
-                return true;
-              }
-            }
-            
-            drawAttempts++;
-            if (drawAttempts < maxDrawAttempts) {
-              setTimeout(tryDrawVideo, 100); // Wait 100ms and try again
-            } else {
-              console.error('❌ Video never produced content after 15 seconds');
-              toast.error('Camera is not producing content. Please check camera and try again.');
-              setPhotoCapturing(false);
-              // Stop camera stream to close camera
-              stream.getTracks().forEach(track => track.stop());
-              return false;
-            }
-            return false;
-          };
-          
-          // Function to process the captured image
-          const processCapturedImage = () => {
-            // Test: Check if canvas has content immediately after drawing
-            const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const hasContent = testImageData.data.some(pixel => pixel !== 0);
-            
-            if (!hasContent) {
-              console.error('❌ Canvas is empty after drawing video!');
-              console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
-              toast.error('Camera is producing black frames. Please check camera and try again.');
-              setPhotoCapturing(false);
-              // Stop camera stream to close camera
-              stream.getTracks().forEach(track => track.stop());
-              return;
-            }
-            
-            // Apply smart compression with fallback
-            let compressedDataUrl;
-            
-            // SIMPLE TEST: Use basic JPEG with high quality
-            compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
-            console.log(`🧪 DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
-            
-            // Check if canvas has content
-            const rawImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const rawHasContent = rawImageData.data.some(pixel => pixel !== 0);
-            
-            if (rawHasContent) {
-              console.log(`🧪 Canvas first 20 pixels:`, Array.from(rawImageData.data.slice(0, 20)));
-            }
-            
-            console.log(`🖼️ CompressedDataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
-            setCapturedPhoto(compressedDataUrl); // Keep for display
-            
-            // TEST: Create a test image element to see if the dataUrl works
-            const testImg = document.createElement('img');
-            testImg.src = compressedDataUrl;
-            testImg.style.position = 'fixed';
-            testImg.style.top = '200px';
-            testImg.style.right = '10px';
-            testImg.style.width = '200px';
-            testImg.style.height = '150px';
-            testImg.style.border = '2px solid blue';
-            testImg.style.zIndex = '9999';
-            testImg.onload = () => {
-              document.body.appendChild(testImg);
-              
-              // FORCE UPDATE: Since test image works, force update the main state
-              setCapturedPhoto(compressedDataUrl);
-              
-              setTimeout(() => {
-                if (testImg.parentNode) {
-                  testImg.parentNode.removeChild(testImg);
-                }
-              }, 5000);
-            };
-            testImg.onerror = () => {
-              console.error(`🧪 TEST: Test image failed to load!`);
-            };
-            
-            // Upload to GitLab
-            const file = dataURLtoFile(compressedDataUrl, 'owner_photo.jpg');
-            uploadImageToGitLab(file, 'owner_photo', (imageId) => {
-              setOwnerPhotoImageId(imageId);
-              setPhotoCapturing(false);
-              toast.success('Owner/Tenant Photo Captured Successfully!');
-            });
-            
-            // Stop camera stream to close camera
-            stream.getTracks().forEach(track => track.stop());
-          };
-          
-          // Start with initial delay, then begin content detection
-          setTimeout(() => {
-            toast.info('Camera ready! Detecting content...');
-            
-            if (!tryDrawVideo()) {
-              return; // Exit if video never has content
-            }
-          }, 2000); // 2 second initial delay
-        }
-      } else {
-        toast.info('Camera not supported. Opening file upload...');
-        openFileInput();
-      }
-    } catch (error) {
-      console.error('Camera access error:', error);
-      
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          toast.error('Camera access denied. Please allow camera permissions or use file upload.');
-          openFileInput();
-        } else if (error.name === 'NotFoundError') {
-          toast.error('No camera found. Please use file upload.');
-          openFileInput();
-        } else {
-          toast.error('Camera error. Please use file upload.');
-          openFileInput();
-        }
-      } else {
-        toast.error('Camera error. Please use file upload.');
-        openFileInput();
-      }
-    } finally {
-      setPhotoCapturing(false);
-    }
-  };
 
   // Camera preview functions for manual capture
   const openCameraPreview = async (type: 'owner' | 'sketch' | 'signature') => {
@@ -1621,207 +1341,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     await openCameraPreview('sketch');
   };
 
-  const captureSketchPhotoOld = async () => {
-    try {
-      setSketchPhotoCapturing(true);
-      toast.info('Opening camera for sketch... Please wait.');
-      
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const cameraMode = isMobileDevice() ? 'environment' : 'user';
-        console.log(`📱 Device: ${isMobileDevice() ? 'Mobile' : 'Desktop'}, Camera: ${cameraMode}`);
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: cameraMode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          } 
-        });
-        
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        video.play();
-        
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve(true);
-        });
-        
-        // Wait for video to actually start playing and have content
-        toast.info('Waiting for camera to stabilize...');
-        
-        let attempts = 0;
-        const maxAttempts = 30; // 3 seconds max wait
-        
-        while (attempts < maxAttempts) {
-          // Check if video is playing and has content
-          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-            // Test if video has actual content (not just black frames)
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              const hasContent = testImageData.data.some(pixel => pixel !== 0);
-              
-              if (hasContent) {
-                break;
-              }
-            }
-          }
-          
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
-        if (attempts >= maxAttempts) {
-          console.error('❌ Video stream never produced content after 3 seconds');
-          toast.error('Camera is not producing content. Please check camera permissions and try again.');
-          setSketchPhotoCapturing(false);
-          return;
-        }
-        
-        toast.info('Camera ready! Position your sketch in frame and click capture.');
-        
-        // TEST: Add video element to DOM temporarily to see if video stream works
-        video.style.position = 'fixed';
-        video.style.top = '10px';
-        video.style.right = '10px';
-        video.style.width = '200px';
-        video.style.height = '150px';
-        video.style.border = '2px solid red';
-        video.style.zIndex = '9999';
-        document.body.appendChild(video);
-        
-        // Remove video element after 5 seconds
-        setTimeout(() => {
-          if (video.parentNode) {
-            video.parentNode.removeChild(video);
-          }
-        }, 5000);
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        
-        if (ctx) {
-          // CRITICAL: Wait for video to actually have content before drawing
-          let drawAttempts = 0;
-          const maxDrawAttempts = 150; // 15 seconds max - camera needs even more time to warm up
-          
-          // Add initial delay to let camera fully initialize
-          toast.info('Initializing camera... Please wait');
-          
-          while (drawAttempts < maxDrawAttempts) {
-            // Test if video has actual content (not just black frames)
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              
-              // ADVANCED CONTENT DETECTION: Check for meaningful brightness variation (same as owner photo)
-              const pixels = testImageData.data;
-              let totalBrightness = 0;
-              let maxBrightness = 0;
-              let minBrightness = 255;
-              let nonZeroPixels = 0;
-              
-              // Sample every 4th pixel for performance (RGBA = 4 values per pixel)
-              for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
-                const r = pixels[i];
-                const g = pixels[i + 1];
-                const b = pixels[i + 2];
-                const brightness = (r + g + b) / 3;
-                
-                totalBrightness += brightness;
-                maxBrightness = Math.max(maxBrightness, brightness);
-                minBrightness = Math.min(minBrightness, brightness);
-                
-                if (brightness > 10) { // Not just black/dark
-                  nonZeroPixels++;
-                }
-              }
-              
-              const avgBrightness = totalBrightness / (pixels.length / 16);
-              const brightnessRange = maxBrightness - minBrightness;
-              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
-              
-              console.log(`   Avg brightness: ${avgBrightness.toFixed(1)}`);
-              console.log(`   Brightness range: ${brightnessRange.toFixed(1)}`);
-              
-              if (hasContent) {
-                console.log(`✅ Video has content after ${drawAttempts} attempts`);
-                break;
-              }
-            }
-            
-            drawAttempts++;
-            if (drawAttempts % 50 === 0) {
-              const remaining = Math.ceil((maxDrawAttempts - drawAttempts) / 50);
-              toast.info(`Camera initializing... ${remaining} seconds remaining`);
-            }
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-          if (drawAttempts >= maxDrawAttempts) {
-            console.error('❌ Video stream never produced content after 15 seconds');
-            toast.error('Camera is not producing content. Please check camera permissions and try again.');
-            setSketchPhotoCapturing(false);
-            return;
-          }
-          
-          // Now draw the actual image
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // CRITICAL: Validate canvas has content after drawing (same as owner photo)
-          const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const hasContent = testImageData.data.some(pixel => pixel !== 0);
-          
-          if (!hasContent) {
-            console.error('❌ Canvas is empty after drawing video!');
-            console.log(`📊 First 20 pixels:`, Array.from(testImageData.data.slice(0, 20)));
-            toast.error('Camera is producing black frames. Please check camera and try again.');
-            setSketchPhotoCapturing(false);
-            return;
-          }
-          
-          console.log('✅ Canvas has content after drawing video');
-          
-          // Use simple compression like owner photos (smartCompressImage corrupts sketch photos)
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0); // JPEG with maximum quality
-          console.log(`🧪 DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
-          
-          setSketchPhoto(compressedDataUrl); // Keep for display
-          
-          // Upload to GitLab
-          const file = dataURLtoFile(compressedDataUrl, 'sketch_photo.jpg');
-          uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
-            setSketchPhotoImageId(imageId);
-            toast.success('Sketch photo captured and uploaded successfully!');
-          });
-          
-          stream.getTracks().forEach(track => track.stop());
-          
-          setSketchPhotoDialogOpen(false);
-        }
-      } else {
-        toast.error('Camera not supported on this device.');
-      }
-    } catch (error) {
-      console.error('Sketch camera error:', error);
-      toast.error('Failed to open camera for sketch capture.');
-    } finally {
-      setSketchPhotoCapturing(false);
-    }
-  };
 
   // ✅ SIMPLIFIED: Sketch photo is now handled directly in property data like owner_tenant_photo
   // No separate API call needed - sketch_photo is included in apiData
@@ -1831,186 +1350,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     await openCameraPreview('signature');
   };
 
-  const captureSignaturePhotoOld = async () => {
-    try {
-      setSignaturePhotoCapturing(true);
-      toast.info('Opening camera for signature... Please wait.');
-      
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const cameraMode = isMobileDevice() ? 'environment' : 'user';
-        console.log(`📱 Device: ${isMobileDevice() ? 'Mobile' : 'Desktop'}, Camera: ${cameraMode}`);
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: cameraMode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          } 
-        });
-        
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        video.play();
-        
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve(true);
-        });
-        
-        // Wait for video to stabilize
-        toast.info('Waiting for camera to stabilize...');
-        
-        let attempts = 0;
-        const maxAttempts = 30; // 3 seconds max wait
-        
-        while (attempts < maxAttempts) {
-          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              const hasContent = testImageData.data.some(pixel => pixel !== 0);
-              
-              if (hasContent) {
-                break;
-              }
-            }
-          }
-          
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
-        if (attempts >= maxAttempts) {
-          console.error('❌ Video stream never produced content after 3 seconds');
-          toast.error('Camera is not producing content. Please check camera permissions and try again.');
-          setSignaturePhotoCapturing(false);
-          // Stop camera stream to close camera
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        
-        toast.info('Camera ready! Position your signature in frame and click capture.');
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        
-        if (ctx) {
-          // Wait for video to have content before drawing
-          let drawAttempts = 0;
-          const maxDrawAttempts = 150; // 15 seconds max
-          
-          toast.info('Initializing camera... Please wait');
-          
-          while (drawAttempts < maxDrawAttempts) {
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = video.videoWidth;
-            testCanvas.height = video.videoHeight;
-            const testCtx = testCanvas.getContext('2d');
-            
-            if (testCtx) {
-              testCtx.drawImage(video, 0, 0, testCanvas.width, testCanvas.height);
-              const testImageData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-              
-              // Check for meaningful brightness variation
-              const pixels = testImageData.data;
-              let totalBrightness = 0;
-              let maxBrightness = 0;
-              let minBrightness = 255;
-              let nonZeroPixels = 0;
-              
-              for (let i = 0; i < pixels.length; i += 16) {
-                const r = pixels[i];
-                const g = pixels[i + 1];
-                const b = pixels[i + 2];
-                const brightness = (r + g + b) / 3;
-                
-                totalBrightness += brightness;
-                maxBrightness = Math.max(maxBrightness, brightness);
-                minBrightness = Math.min(minBrightness, brightness);
-                
-                if (brightness > 10) {
-                  nonZeroPixels++;
-                }
-              }
-              
-              const avgBrightness = totalBrightness / (pixels.length / 16);
-              const brightnessRange = maxBrightness - minBrightness;
-              const hasContent = avgBrightness > 20 && brightnessRange > 30 && nonZeroPixels > 100;
-              
-              if (hasContent) {
-                console.log(`✅ Video has content after ${drawAttempts} attempts`);
-                break;
-              }
-            }
-            
-            drawAttempts++;
-            if (drawAttempts % 50 === 0) {
-              const remaining = Math.ceil((maxDrawAttempts - drawAttempts) / 50);
-              toast.info(`Camera initializing... ${remaining} seconds remaining`);
-            }
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-          if (drawAttempts >= maxDrawAttempts) {
-            console.error('❌ Video stream never produced content after 15 seconds');
-            toast.error('Camera is not producing content. Please check camera permissions and try again.');
-            setSignaturePhotoCapturing(false);
-            // Stop camera stream to close camera
-            stream.getTracks().forEach(track => track.stop());
-            return;
-          }
-          
-          // Draw the actual image
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // Validate canvas has content
-          const testImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const hasContent = testImageData.data.some(pixel => pixel !== 0);
-          
-          if (!hasContent) {
-            console.error('❌ Canvas is empty after drawing video!');
-            toast.error('Camera is producing black frames. Please check camera and try again.');
-            setSignaturePhotoCapturing(false);
-            // Stop camera stream to close camera
-            stream.getTracks().forEach(track => track.stop());
-            return;
-          }
-          
-          console.log('✅ Canvas has content after drawing video');
-          
-          // Use JPEG with high quality for signatures
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 1.0);
-          console.log(`🧪 Signature DataUrl preview: ${compressedDataUrl ? compressedDataUrl.substring(0, 100) : 'null'}...`);
-          
-          setSignaturePhoto(compressedDataUrl);
-          
-          // Upload to GitLab
-          const file = dataURLtoFile(compressedDataUrl, 'signature_photo.jpg');
-          uploadImageToGitLab(file, 'signature', (imageId) => {
-            setSignatureImageId(imageId);
-            toast.success('Signature photo captured and uploaded successfully!');
-          });
-          
-          // Stop camera stream to close camera
-          stream.getTracks().forEach(track => track.stop());
-        }
-      } else {
-        toast.error('Camera not supported on this device.');
-      }
-    } catch (error) {
-      console.error('Signature camera error:', error);
-      toast.error('Failed to open camera for signature capture.');
-    } finally {
-      setSignaturePhotoCapturing(false);
-    }
-  };
 
   const uploadSignatureFile = () => {
     const input = document.createElement('input');
@@ -3680,9 +3019,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   <Grid item xs={12} sm={6}>
                     <Button
                       variant="outlined"
-                      startIcon={photoCapturing ? <CircularProgress size={20} /> : <PhotoCamera />}
+                      startIcon={cameraPreviewOpen ? <CircularProgress size={20} /> : <PhotoCamera />}
                       onClick={() => setPhotoDialogOpen(true)}
-                      disabled={photoCapturing}
+                      disabled={cameraPreviewOpen}
                       fullWidth
                       sx={{ p: 3 }}
                     >
@@ -3817,9 +3156,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   <Grid item xs={12} sm={6}>
                     <Button
                       variant="outlined"
-                      startIcon={sketchPhotoCapturing ? <CircularProgress size={20} /> : <PhotoCamera />}
+                      startIcon={cameraPreviewOpen ? <CircularProgress size={20} /> : <PhotoCamera />}
                       onClick={() => setSketchPhotoDialogOpen(true)}
-                      disabled={sketchPhotoCapturing}
+                      disabled={cameraPreviewOpen}
                       fullWidth
                       sx={{ p: 3 }}
                     >
@@ -4147,11 +3486,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   variant="contained"
                   startIcon={<PhotoCamera />}
                   onClick={capturePhoto}
-                  disabled={photoCapturing}
+                  disabled={cameraPreviewOpen}
                   fullWidth
                   sx={{ p: 2 }}
                 >
-                  {photoCapturing ? (
+                  {cameraPreviewOpen ? (
                     <>
                       <CircularProgress size={20} sx={{ mr: 1 }} />
                       Opening Camera...
@@ -4175,10 +3514,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               </Grid>
             </Grid>
             
-            {photoCapturing && (
+            {cameraPreviewOpen && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
-                  Opening camera... Please wait and grant camera permissions when prompted.
+                  Camera preview is open. Position your subject and click capture when ready.
                 </Typography>
               </Alert>
             )}
@@ -4304,11 +3643,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                   variant="contained"
                   startIcon={<PhotoCamera />}
                   onClick={captureSketchPhoto}
-                  disabled={sketchPhotoCapturing}
+                  disabled={cameraPreviewOpen}
                   fullWidth
                   sx={{ p: 2 }}
                 >
-                  {sketchPhotoCapturing ? (
+                  {cameraPreviewOpen ? (
                     <>
                       <CircularProgress size={20} sx={{ mr: 1 }} />
                       Opening Camera...
@@ -4332,10 +3671,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               </Grid>
             </Grid>
             
-            {sketchPhotoCapturing && (
+            {cameraPreviewOpen && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
-                  Opening camera... Please wait and grant camera permissions when prompted.
+                  Camera preview is open. Position your sketch and click capture when ready.
                 </Typography>
               </Alert>
             )}
@@ -4473,9 +3812,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                     variant="outlined"
                     onClick={captureSignaturePhoto}
                     startIcon={<PhotoCamera />}
-                    disabled={signaturePhotoCapturing}
+                    disabled={cameraPreviewOpen}
                   >
-                    {signaturePhotoCapturing ? 'Capturing...' : 'Capture Photo'}
+                    {cameraPreviewOpen ? 'Capturing...' : 'Capture Photo'}
                   </Button>
                   <Button
                     variant="outlined"
@@ -4501,10 +3840,10 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
               </>
             )}
 
-            {signaturePhotoCapturing && (
+            {cameraPreviewOpen && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="body2">
-                  Opening camera... Please wait and grant camera permissions when prompted.
+                  Camera preview is open. Position your signature document and click capture when ready.
                 </Typography>
               </Alert>
             )}
