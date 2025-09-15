@@ -5,7 +5,7 @@ export interface User {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'admin' | 'municipal_officer' | 'engineer' | 'field_executive';
+  role: 'admin' | 'municipal_officer' | 'engineer' | 'field_executive' | 'super_admin';
   created_at?: string;
   updated_at?: string;
 }
