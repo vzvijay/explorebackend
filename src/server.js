@@ -116,18 +116,26 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
 }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Maharashtra Survey Management API is running',
-    timestamp: new Date().toISOString(),
-    environment: config.environment,
-    apiBaseUrl: config.apiBaseUrl,
-    database: modelsInitialized ? 'connected' : 'disconnected',
-    corsOrigins: config.corsOrigins
-  });
+// app.get('/health', (req, res) => {
+//   res.json({
+//     success: true,
+//     message: 'Maharashtra Survey Management API is running',
+//     timestamp: new Date().toISOString(),
+//     environment: config.environment,
+//     apiBaseUrl: config.apiBaseUrl,
+//     database: modelsInitialized ? 'connected' : 'disconnected',
+//     corsOrigins: config.corsOrigins
+//   });
+// });
+const healthResponse = JSON.stringify({
+  status: 'ok',
+  db: modelsInitialized ? 'ok' : 'error'
 });
 
+app.get('/health', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(healthResponse);
+});
 // Debug endpoint removed for production security
 
 // Specific route for sketch photos to ensure proper CORS headers
