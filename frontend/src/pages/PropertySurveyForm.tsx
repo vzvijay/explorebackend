@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -144,6 +145,9 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     'Review & Submit'
   ];
 
+  // Navigation hook
+  const navigate = useNavigate();
+  
   // State variables
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -1002,7 +1006,8 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   const uploadImageToGitLab = async (
     file: File, 
     imageType: 'owner_photo' | 'signature' | 'sketch_photo',
-    onSuccess: (imageId: string) => void
+    onSuccess: (imageId: string) => void,
+    onError?: (error: Error) => void
   ) => {
     try {
       // setUploadingImage(imageType);
@@ -1032,6 +1037,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     } catch (error) {
       console.error(`❌ Error uploading ${imageType}:`, error);
       toast.error(`Failed to upload ${imageType.replace('_', ' ')}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Call error callback if provided
+      if (onError && error instanceof Error) {
+        onError(error);
+      }
     } finally {
       // setUploadingImage(null);
     }
@@ -1157,7 +1167,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         uploadImageToGitLab(file, 'owner_photo', (imageId) => {
           setOwnerPhotoImageId(imageId);
           closeCameraPreview();
+          setPhotoDialogOpen(false); // Close photo selection modal
           toast.success('Owner/Tenant Photo Captured Successfully!');
+        }, (_error) => {
+          // Error callback - keep popup open for retry
+          toast.error('Upload failed. Please try again.');
+          // Popup stays open for user to retry
         });
       } else if (cameraType === 'sketch') {
         setSketchPhoto(compressedDataUrl);
@@ -1165,7 +1180,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         uploadImageToGitLab(file, 'sketch_photo', (imageId) => {
           setSketchPhotoImageId(imageId);
           closeCameraPreview();
+          setSketchPhotoDialogOpen(false); // Close sketch photo selection modal
           toast.success('Sketch Photo Captured Successfully!');
+        }, (_error) => {
+          // Error callback - keep popup open for retry
+          toast.error('Upload failed. Please try again.');
+          // Popup stays open for user to retry
         });
       } else if (cameraType === 'signature') {
         setSignaturePhoto(compressedDataUrl);
@@ -1173,7 +1193,12 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
         uploadImageToGitLab(file, 'signature', (imageId) => {
           setSignatureImageId(imageId);
           closeCameraPreview();
+          setSignatureOpen(false); // Close signature dialog
           toast.success('Signature Photo Captured Successfully!');
+        }, (_error) => {
+          // Error callback - keep popup open for retry
+          toast.error('Upload failed. Please try again.');
+          // Popup stays open for user to retry
         });
       }
       
@@ -1214,7 +1239,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           reader.onload = (event) => {
             const result = event.target?.result as string;
             setCapturedPhoto(result); // Keep for preview
-            setPhotoDialogOpen(false);
+            setPhotoDialogOpen(false); // Close photo selection modal
           };
           reader.readAsDataURL(file);
         });
@@ -1330,6 +1355,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           // Upload to GitLab
           uploadImageToGitLab(file, 'signature', (imageId) => {
             setSignatureImageId(imageId);
+            setSignatureOpen(false); // Close signature dialog
             toast.success('Signature photo uploaded successfully!');
           });
         };
@@ -1638,6 +1664,26 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
   // Stepper navigation
   const handleBack = () => {
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
+    
+    // Scroll to top after step change (industry standard 100ms delay)
+    setTimeout(() => {
+      if (isMobileDevice()) {
+        // Mobile: Scroll to page top (simple, reliable)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        // Desktop: Scroll to form container (contextual, professional)
+        const formContainer = document.getElementById('survey-form-container');
+        if (formContainer) {
+          formContainer.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
+        } else {
+          // Fallback to page top if container not found
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+    }, 100);
   };
 
   const handleNext = () => {
@@ -1697,6 +1743,26 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     // Clear validation errors when moving to next step
     setValidationErrors([]);
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    
+    // Scroll to top after step change (industry standard 100ms delay)
+    setTimeout(() => {
+      if (isMobileDevice()) {
+        // Mobile: Scroll to page top (simple, reliable)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        // Desktop: Scroll to form container (contextual, professional)
+        const formContainer = document.getElementById('survey-form-container');
+        if (formContainer) {
+          formContainer.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
+        } else {
+          // Fallback to page top if container not found
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+    }, 100);
   };
 
   // Helper function to check if data has changed
@@ -1974,6 +2040,11 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
                             formData.property_id;
           await propertiesApi.submitProperty(propertyId);
           toast.success(`Property survey submitted for review successfully! Survey ID: ${formData.survey_number}`);
+          
+          // Auto-navigate to dashboard after successful submission
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 1500);
         } catch (submitError: any) {
           console.error('❌ Error submitting property:', submitError);
           console.error('❌ Full error response:', submitError.response?.data);
@@ -2003,11 +2074,21 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
           if (response.data.property && response.data.property.property_id) {
             await propertiesApi.submitProperty(response.data.property.property_id);
             toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
+            
+            // Auto-navigate to dashboard after successful submission
+            setTimeout(() => {
+              navigate('/dashboard');
+            }, 1500);
           }
         } else if (response.data && response.data.property && response.data.property.id) {
           // New property created
           await propertiesApi.submitProperty(response.data.property.id);
           toast.success(`Property survey submitted successfully! Survey ID: ${formData.survey_number}`);
+          
+          // Auto-navigate to dashboard after successful submission
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 1500);
         }
         
         // Only reset form for truly new surveys (not draft updates)
@@ -3325,7 +3406,7 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
   // Main return statement
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+    <Box id="survey-form-container" sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       <Card>
         <CardContent>
           <Typography variant="h4" gutterBottom align="center">
