@@ -52,6 +52,7 @@ import { toast } from 'react-toastify';
 import { Base64ImageData } from '../types';
 import { propertiesApi } from '../services/api';
 import { imageApi } from '../services/imageApi';
+import geocodingApi from '../services/geocodingApi';
 import DateInput from '../components/DateInput';
 
 
@@ -645,65 +646,47 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
     setLocationLoading(false);
   };
 
-  // Enhanced address lookup with error handling and retries
+  // Address lookup using backend proxy (avoids CORS issues)
   const lookupAddressFromCoordinates = async (lat: number, lng: number) => {
     setGeocodingLoading(true);
     
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    const attemptLookup = async () => {
-      try {
-        // Use different zoom levels based on retry count
-        const zoom = retryCount === 0 ? 18 : retryCount === 1 ? 16 : 14;
-        
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=${zoom}&addressdetails=1&accept-language=en`;
-        
-        
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'YourAppName/1.0' // Nominatim requires User-Agent
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.display_name) {
-          processAddressData(data);
-          return true;
-        } else {
-          throw new Error('No address found in response');
-        }
-      } catch (error) {
-        console.error(`Geocoding attempt ${retryCount + 1} failed:`, error);
-        
-        retryCount++;
-        if (retryCount < maxRetries) {
-          console.log(`Retrying in 1 second... (attempt ${retryCount + 1}/${maxRetries})`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return attemptLookup();
-        } else {
-          throw error;
-        }
-      }
-    };
-    
     try {
-      await attemptLookup();
-    } catch (error) {
-      console.error('All geocoding attempts failed:', error);
-      toast.error('Failed to lookup address. Location coordinates saved successfully.');
+      console.log(`🌍 Starting address lookup for coordinates: ${lat}, ${lng}`);
       
-      // Set a basic address format
+      // Call our backend geocoding service (no CORS issues)
+      const response = await geocodingApi.reverseGeocode(lat, lng, 18);
+      
+      if (response.success && response.data) {
+        // Parse the structured address data
+        const formattedAddress = geocodingApi.parseAddressForForm(response.data);
+        
+        // Update form data with parsed address information
+        setFormData(prev => ({
+          ...prev,
+          ...formattedAddress
+        }));
+        
+        // Set captured address for display
+        setCapturedAddress(response.data.display_name);
+        
+        toast.success('📍 Address lookup completed successfully!');
+        console.log(`✅ Address lookup successful: ${response.data.display_name}`);
+        
+      } else {
+        throw new Error(response.message || 'No address data received');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Address lookup failed:', error.message);
+      toast.error(`Failed to lookup address: ${error.message}`);
+      
+      // Set a basic address format as fallback
       setCapturedAddress(`Location: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       setFormData(prev => ({
         ...prev,
         address: `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`
       }));
+      
     } finally {
       setGeocodingLoading(false);
     }
@@ -711,47 +694,6 @@ const PropertySurveyForm: React.FC<PropertySurveyFormProps> = ({
 
 
 
-  const processAddressData = (data: any) => {
-    const address = data.display_name;
-    const addressParts = data.address;
-    
-    
-    // Extract address components with fallbacks
-    const streetNumber = addressParts?.house_number || '';
-    const streetName = addressParts?.road || addressParts?.street || '';
-    const streetAddress = streetNumber && streetName ? 
-      `${streetNumber}, ${streetName}` : 
-      (streetName || addressParts?.pedestrian || addressParts?.path || '');
-    
-    const neighborhood = addressParts?.neighbourhood || addressParts?.suburb || '';
-    const city = addressParts?.city || addressParts?.town || addressParts?.village || 
-               addressParts?.municipality || addressParts?.county || '';
-    const state = addressParts?.state || addressParts?.province || 
-                 addressParts?.region || '';
-    const country = addressParts?.country || '';
-    const postalCode = addressParts?.postcode || '';
-    
-    // Indian specific fields
-    const wardNumber = addressParts?.['addr:postcode'] || addressParts?.postcode || '';
-    const area = neighborhood || addressParts?.residential || '';
-    
-    setCapturedAddress(address);
-    
-    setFormData(prev => ({
-      ...prev,
-      address,
-      street_address: streetAddress,
-      neighborhood,
-      city,
-      state,
-      country,
-      postal_code: postalCode,
-      ward_number_from_gps: wardNumber,
-      area_from_gps: area
-    }));
-    
-    toast.success('📍 Address lookup completed successfully!');
-  };
 
   // Manual coordinate entry with address lookup
   const handleManualCoordinateEntry = async () => {

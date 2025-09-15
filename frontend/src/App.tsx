@@ -14,6 +14,7 @@ import PropertyDetailPage from './pages/PropertyDetailPage';
 import PropertySurveyForm from './pages/PropertySurveyForm';
 import EditPropertyPage from './pages/EditPropertyPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 
 const theme = createTheme({
@@ -263,6 +264,7 @@ const AppRoutes: React.FC = () => {
         <Route path="properties/:id/edit" element={<EditPropertyPage />} />
         <Route path="survey" element={<PropertySurveyForm />} />
         <Route path="admin" element={<AdminDashboardPage />} />
+        <Route path="super-admin" element={<SuperAdminDashboardPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

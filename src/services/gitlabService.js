@@ -142,37 +142,93 @@ class GitLabService {
   }
 
   /**
-   * Delete image from GitLab repository
+   * Delete image from GitLab repository with retry logic
    * @param {string} gitlabFilePath - GitLab file path
+   * @param {number} maxRetries - Maximum number of retry attempts (default: 2)
    * @returns {Promise<boolean>} Success status
    */
-  async deleteImage(gitlabFilePath) {
-    try {
-      const encodedFilePath = encodeURIComponent(gitlabFilePath);
-      
-      console.log(`🗑️ Deleting image from GitLab: ${gitlabFilePath}`);
-      
-      const response = await this.client.delete(
-        `/projects/${this.projectId}/repository/files/${encodedFilePath}`,
-        {
-          data: {
-            branch: this.branch,
-            commit_message: `Delete image: ${path.basename(gitlabFilePath)}`
+  async deleteImage(gitlabFilePath, maxRetries = 2) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      try {
+        const encodedFilePath = encodeURIComponent(gitlabFilePath);
+        
+        console.log(`🗑️ Deleting image from GitLab (attempt ${attempt}/${maxRetries + 1}): ${gitlabFilePath}`);
+        
+        const response = await this.client.delete(
+          `/projects/${this.projectId}/repository/files/${encodedFilePath}`,
+          {
+            data: {
+              branch: this.branch,
+              commit_message: `Delete image: ${path.basename(gitlabFilePath)}`
+            }
           }
-        }
-      );
+        );
 
-      if (response.status === 204) {
-        console.log(`✅ Successfully deleted image from GitLab`);
-        return true;
-      } else {
-        throw new Error(`GitLab delete failed with status: ${response.status}`);
+        if (response.status === 204) {
+          console.log(`✅ Successfully deleted image from GitLab`);
+          return true;
+        } else {
+          throw new Error(`GitLab delete failed with status: ${response.status}`);
+        }
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Error deleting image from GitLab (attempt ${attempt}):`, error.message);
+        
+        // If this is not the last attempt, wait before retrying
+        if (attempt <= maxRetries) {
+          const waitTime = attempt * 1000; // Exponential backoff: 1s, 2s
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
-      
-    } catch (error) {
-      console.error(`❌ Error deleting image from GitLab:`, error.message);
-      throw new Error(`Failed to delete image from GitLab: ${error.message}`);
     }
+    
+    // All retries failed
+    console.error(`❌ Failed to delete image after ${maxRetries + 1} attempts:`, lastError.message);
+    throw new Error(`Failed to delete image from GitLab after ${maxRetries + 1} attempts: ${lastError.message}`);
+  }
+
+  /**
+   * Delete multiple images from GitLab repository with retry logic
+   * @param {string[]} gitlabFilePaths - Array of GitLab file paths
+   * @param {number} maxRetries - Maximum number of retry attempts per file (default: 2)
+   * @returns {Promise<Object>} Result with success/failure counts
+   */
+  async deleteMultipleImages(gitlabFilePaths, maxRetries = 2) {
+    const results = {
+      total: gitlabFilePaths.length,
+      successful: 0,
+      failed: 0,
+      errors: []
+    };
+    
+    console.log(`🗑️ Starting batch deletion of ${gitlabFilePaths.length} images from GitLab...`);
+    
+    for (const filePath of gitlabFilePaths) {
+      try {
+        await this.deleteImage(filePath, maxRetries);
+        results.successful++;
+        console.log(`✅ Deleted: ${filePath}`);
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          filePath,
+          error: error.message
+        });
+        console.error(`❌ Failed to delete: ${filePath} - ${error.message}`);
+      }
+    }
+    
+    console.log(`📊 Batch deletion completed: ${results.successful}/${results.total} successful`);
+    
+    if (results.failed > 0) {
+      console.error(`❌ ${results.failed} files failed to delete:`, results.errors);
+    }
+    
+    return results;
   }
 
   /**

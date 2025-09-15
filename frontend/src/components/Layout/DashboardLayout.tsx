@@ -27,7 +27,8 @@ import {
   Home,
   Add,
   Person,
-  AdminPanelSettings
+  AdminPanelSettings,
+  Security
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import UserProfileDropdown from '../Common/UserProfileDropdown';
@@ -69,6 +70,9 @@ const DashboardLayout: React.FC = () => {
     ...(user?.role === 'field_executive' ? [{ text: 'New Survey', path: '/survey', icon: <Add /> }] : []),
     ...(user && ['admin', 'municipal_officer', 'engineer'].includes(user.role) 
       ? [{ text: 'Admin', path: '/admin', icon: <AdminPanelSettings /> }] 
+      : []),
+    ...(user?.role === 'super_admin' 
+      ? [{ text: 'Super Admin', path: '/super-admin', icon: <Security /> }] 
       : [])
   ];
 
@@ -107,6 +111,11 @@ const DashboardLayout: React.FC = () => {
                 {user && ['admin', 'municipal_officer', 'engineer'].includes(user.role) && (
                   <Button color="inherit" onClick={() => navigate('/admin')}>
                     Admin
+                  </Button>
+                )}
+                {user?.role === 'super_admin' && (
+                  <Button color="inherit" onClick={() => navigate('/super-admin')}>
+                    Super Admin
                   </Button>
                 )}
               </ButtonGroup>

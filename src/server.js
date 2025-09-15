@@ -33,6 +33,10 @@ const sketchPhotoRoutes = require('./routes/sketchPhoto');
 const imageRoutes = require('./routes/images');
 const adminRoutes = require('./routes/admin');
 const migrationRoutes = require('./routes/migrations');
+const geocodingRoutes = require('./routes/geocoding');
+
+// Import super admin routes (LOCAL TESTING ONLY)
+const superAdminRoutes = require('./routes/superAdmin');
 
 const app = express();
 const PORT = config.port;
@@ -176,6 +180,10 @@ app.use('/api/sketch-photo', sketchPhotoRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/migrations', migrationRoutes);
+app.use('/api/geocoding', geocodingRoutes);
+
+// Super admin routes (PRODUCTION ENABLED)
+app.use('/api/super-admin', superAdminRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
