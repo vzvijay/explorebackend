@@ -6,7 +6,7 @@
 env.*
 !env.production.template
 !env.local.template
-
+survey.md
 # Backend sensitive files
 backend/env.*
 !backend/env.production.template
@@ -59,3 +59,16 @@ node_modules/
 # Build outputs
 dist/
 build/
+create-super-admin.js
+verify-super-admin.js
+create-local-super-admin.js
+verify-local-super-admin.js
+add-super-admin-role.sql
+run-super-admin-role-migration.js
+update-super-admin-role.js
+test-hard-delete.js
+# Super Admin and Geocoding Testing Files
+test-super-admin-production.js
+check-super-admin-production.js
+test-geocoding-service.js
+update-super-admin-role-production.js
