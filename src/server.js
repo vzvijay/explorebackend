@@ -74,6 +74,10 @@ const limiter = rateLimit({
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
+  },
+  skip: (req) => {
+    // Skip rate limiting for Render health checks
+    return req.path === '/health' && req.get('User-Agent')?.includes('Render');
   }
 });
 app.use(limiter);
