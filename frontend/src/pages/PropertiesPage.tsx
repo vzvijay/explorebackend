@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -31,9 +32,6 @@ import {
   Visibility,
   CheckCircle,
   Cancel,
-  LocationOn,
-  Home,
-  Person,
   Edit
 } from '@mui/icons-material';
 import { propertiesApi } from '../services/api';
@@ -44,6 +42,7 @@ import SketchPhotoDisplay from '../components/Common/SketchPhotoDisplay';
 
 const PropertiesPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -117,7 +116,7 @@ const PropertiesPage: React.FC = () => {
   };
 
   const handleViewProperty = (property: Property) => {
-    setSelectedProperty(property);
+    navigate(`/properties/${property.property_id}`);
   };
 
   const handleReviewProperty = (property: Property, action: 'approve' | 'reject') => {
@@ -484,182 +483,6 @@ const PropertiesPage: React.FC = () => {
         </>
       )}
 
-      {/* Property Details Dialog */}
-      <Dialog open={!!selectedProperty} onClose={() => setSelectedProperty(null)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Property Survey Details - {selectedProperty?.survey_number}
-        </DialogTitle>
-        <DialogContent>
-          {selectedProperty && (
-            <Grid container spacing={3}>
-              {/* Owner Information */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  <Person sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Owner Information
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography><strong>Name:</strong> {selectedProperty.owner_name}</Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography><strong>Father's Name:</strong> {selectedProperty.owner_father_name || 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography><strong>Phone:</strong> {selectedProperty.owner_phone || 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography><strong>Email:</strong> {selectedProperty.owner_email || 'N/A'}</Typography>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Property Information */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  <Home sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Property Information
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <Typography><strong>Address:</strong> {selectedProperty.house_number} {selectedProperty.street_name}, {selectedProperty.locality}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Ward:</strong> {selectedProperty.ward_number}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Pincode:</strong> {selectedProperty.pincode}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Type:</strong> {selectedProperty.property_type}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Construction:</strong> {selectedProperty.construction_type}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Year Built:</strong> {selectedProperty.construction_year || 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Floors:</strong> {selectedProperty.number_of_floors}</Typography>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Area Measurements */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  📏 Area Measurements
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={4}>
-                    <Typography><strong>Plot Area:</strong> {selectedProperty.plot_area} sq ft</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Built-up Area:</strong> {selectedProperty.built_up_area} sq ft</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography><strong>Carpet Area:</strong> {selectedProperty.carpet_area} sq ft</Typography>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Utilities */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  🔌 Utility Connections
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={4}>
-                    <Typography>
-                      <strong>Water:</strong> {selectedProperty.water_connection ? '✅ Yes' : '❌ No'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography>
-                      <strong>Electricity:</strong> {selectedProperty.electricity_connection ? '✅ Yes' : '❌ No'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Typography>
-                      <strong>Sewage:</strong> {selectedProperty.sewage_connection ? '✅ Yes' : '❌ No'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Location */}
-              {selectedProperty.latitude && selectedProperty.longitude && (
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>
-                    <LocationOn sx={{ mr: 1, verticalAlign: 'middle' }} />
-                    GPS Location
-                  </Typography>
-                  <Typography>
-                    <strong>Coordinates:</strong> {selectedProperty.latitude}, {selectedProperty.longitude}
-                  </Typography>
-                </Grid>
-              )}
-
-              {/* Tax Calculation */}
-              <Grid item xs={12}>
-                <Alert severity="info">
-                  <Typography variant="h6" gutterBottom>
-                    💰 Tax Assessment
-                  </Typography>
-                  <Typography>
-                    <strong>Estimated Annual Tax:</strong> ₹{calculateTax(selectedProperty.carpet_area, selectedProperty.property_type)}
-                  </Typography>
-                  <Typography variant="caption">
-                    Based on carpet area ({selectedProperty.carpet_area} sq ft) and property type ({selectedProperty.property_type})
-                  </Typography>
-                </Alert>
-              </Grid>
-
-              {/* Sketch Photo Section */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  📸 Sketch Photo
-                </Typography>
-                {(selectedProperty.sketch_photo) ? (
-                  <Box sx={{ textAlign: 'center', mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      📸 Sketch Photo
-                    </Typography>
-                    <SketchPhotoDisplay
-                      sketchPhotoPath={selectedProperty.sketch_photo}
-                      sketchPhotoBase64={selectedProperty.sketch_photo ? {
-                        data: selectedProperty.sketch_photo,
-                        size: selectedProperty.sketch_photo.length,
-                        type: 'image/png',
-                        filename: 'sketch_photo.png'
-                      } : null}
-                      capturedAt={selectedProperty.sketch_photo_captured_at || null}
-                      surveyNumber={selectedProperty.survey_number}
-                      ownerName={selectedProperty.owner_name}
-                      showMetadata={true}
-                      size="medium"
-                      downloadable={true}
-                    />
-                  </Box>
-                ) : null}
-              </Grid>
-
-              {/* Remarks */}
-              {selectedProperty.remarks && (
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>
-                    📝 Remarks
-                  </Typography>
-                  <Typography>{selectedProperty.remarks}</Typography>
-                </Grid>
-              )}
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSelectedProperty(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Review Dialog */}
       <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} maxWidth="sm" fullWidth>
